@@ -6,6 +6,9 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 
+# VS Code Local History extension
+.history/
+
 # Build / firmware artifacts
 build/
 .pio/
