@@ -22,9 +22,9 @@ after the event.
 
 ## System at a Glance
 
-- **Water:** 500 gal tank → filter → SEAFLO 12V pump → accumulator →
-  heater/cold bypass → mixing valve → flow sensor → shower head.
-- **Power:** 12.8V 40Ah LiFePO₄ per station, 50W solar +
+- **Water:** 500 gal tank → strainer → SEAFLO 12V pump → accumulator →
+  propane heater/cold bypass → mixing valve → flow sensor → shower head.
+- **Power:** 12.8V 30Ah LiFePO₄ per station, 50W solar +
   generator-assisted AC charging, 30A breaker + fused distribution.
 - **Control:** M5Stack Tough + PaHub (I²C), RFID2 reader, 4Relay,
   flow-sensor pulse counting, SD-card CSV logging.

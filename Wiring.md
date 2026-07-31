@@ -9,7 +9,8 @@ See [drawings/PowerDiagram_v1.svg](drawings/PowerDiagram_v1.svg) and
 
 ## Battery
 
-- 12.8V 40Ah LiFePO₄ battery (one per shower)
+- 12.8V 30Ah LiFePO₄ battery (one per shower; DC HOUSE 2-pack covers
+  both stations) — ≈ 384 Wh
 - One Anderson SB50 quick disconnect for the entire shower system
 - Battery pigtail only contains: Positive, Negative, Anderson connector
 
@@ -147,7 +148,9 @@ See [SoftwareSpec.md](SoftwareSpec.md) for the pin assignment table.
 
 ## Power Budget
 
-- 40Ah battery ≈ 512 Wh
+- 30Ah battery ≈ 384 Wh
 - 50W solar ≈ 200–260 Wh/day
-- 10A charger ≈ 5 hours for a depleted 40Ah battery
-- Largest continuous load expected to be LED lighting
+- 10A charger ≈ 3 hours for a depleted 30Ah battery
+- The water heater is **propane**, so it is not an electrical load (only
+  its own ignition batteries)
+- Largest continuous electrical load expected to be LED lighting
