@@ -57,7 +57,9 @@ stations**, so most quantities are **×2** (some multi-packs cover both).
 | Cold-bypass valve | BesNPT 1/2" brass 3-way Y ball valve | 1 | ✅ | $13.99 | [B0CT8BL9V9](https://www.amazon.com/dp/B0CT8BL9V9) | Cold bypass / blend |
 | Shower hose | Blissland 90" handheld, brushed chrome | 1 | ✅ | $12.99 | [B0B62QF1Q2](https://www.amazon.com/dp/B0B62QF1Q2) | |
 | Supply hose | Midanya 24" 1/2" FIP braided (2-pack) | 1 | ✅ | $11.99 | [B0CZR5N4P3](https://www.amazon.com/dp/B0CZR5N4P3) | |
+| Short supply hose | Midanya 9" 1/2" FIP × 1/2" FIP braided SS (2-pack) | 3 | ✅ | $12.59 /2-pack | [B0GT4WHS46](https://www.amazon.com/dp/B0GT4WHS46) | Need 5; 3 packs = 6 (1 spare) |
 | Suction tubing | DAVCO 1/2" ID reinforced vinyl, 25 ft | 1 | ✅ | $25.99 | [B09W4KSB5X](https://www.amazon.com/dp/B09W4KSB5X) | Tank feed |
+| Suction hose (1") | DAVCO 1" ID wire-reinforced PVC, 25 ft | 1 | ✅ | $44.99 | [B0F1TKPPDR](https://www.amazon.com/dp/B0F1TKPPDR) | Larger low-restriction tank suction |
 | Hose barb | SUNGATOR 1" NPT male barb (2-pack) | 1 | ✅ | $10.99 | [B0CLY4WNJ7](https://www.amazon.com/dp/B0CLY4WNJ7) | Tank fitting |
 | Manifold (opt) | SNGSPK 304 SS 5-way 1" NPT | — | 🔍 | — | [B0FLTW68VT](https://www.amazon.com/dp/B0FLTW68VT) | Distribution branch |
 
@@ -65,10 +67,10 @@ stations**, so most quantities are **×2** (some multi-packs cover both).
 
 | Item | Spec / Part | Qty | Status | Unit $ | Vendor / Link | Notes |
 |------|-------------|:---:|:---:|:---:|-------|-------|
-| Controller | M5Stack Tough | 1 | 🔍 | | | Not on list; 12V via RS485 conn. |
-| I²C hub | M5Stack PaHub | 1 | 🔍 | | | Not on list |
-| RFID/NFC reader | M5Stack RFID2 | 1 | 🔍 | | | Not on list |
-| Relay unit | M5Stack 4Relay | 1 | 🔍 | | | Not on list |
+| Controller | M5Stack Tough ESP32 (2.0" touch, IP-rated) | 1 | ✅ | $64.90 | [B0C7GL8RP8](https://www.amazon.com/dp/B0C7GL8RP8) | 12V via RS485 conn. |
+| I²C hub | M5Stack PaHub v2.1 (PCA9548A, 6-port) | 1 | ✅ | $15.99 | [B0G5N1FSNG](https://www.amazon.com/dp/B0G5N1FSNG) | Grove I²C expansion |
+| RFID/NFC reader | M5Stack RFID2 (WS1850S, 13.56 MHz) | 1 | ✅ | — | [B0F3N3XMDM](https://www.amazon.com/dp/B0F3N3XMDM) | MIFARE / NTAG compatible |
+| Relay unit | M5Stack 4Relay (10A/16A, I²C) | 1 | ✅ | $29.99 | [B0H27XRW4T](https://www.amazon.com/dp/B0H27XRW4T) | Grove; incl. 3.96 terminals |
 | Automotive relay | 5-pin 40/30A 12V waterproof, w/ harness | 1 | ✅ | $25.99 | [B074FSZWVT](https://www.amazon.com/dp/B074FSZWVT) | Pump switching |
 | SD card | For CSV logs | 1 | 🔍 | | | Not on list |
 | RTC | Real-time clock | 1 | ❓ | | | For log timestamps |
@@ -92,6 +94,7 @@ stations**, so most quantities are **×2** (some multi-packs cover both).
 | Silicone wire | BNTECHGO 18 AWG red+black, 25 ft ea | 1 | ✅ | $13.98 | [B01C5CANVG](https://www.amazon.com/dp/B01C5CANVG) | Signals / jumpers |
 | Ring terminals | MENTBERY 16-14 AWG 1/4" stud (50 pc, blue) | 1 | ✅ | $7.99 | [B0BWJ8G5P9](https://www.amazon.com/dp/B0BWJ8G5P9) | |
 | Ring terminals | MENTBERY 22-16 AWG 1/4" stud (50 pc, red) | 1 | ✅ | $5.99 | [B0BWJ92F6G](https://www.amazon.com/dp/B0BWJ92F6G) | |
+| SAE fused pigtail | BFXM 10 AWG SAE↔ring, 15/20A fuse (2-pack) | 1 | ✅ | $12.99 | [B0D66QVPQK](https://www.amazon.com/dp/B0D66QVPQK) | Quick-disconnect / solar / charger |
 | MC4 (solar) | Solar connectors | 1 | 🔍 | | | Not on list |
 | Grove | I²C device cables | — | 🔍 | | | Not on list |
 | Wire 12/16 AWG | Power runs (pump/main/lighting) | — | 🔍 | | | See Wiring.md gauges |
@@ -121,18 +124,18 @@ cover both stations):
 | Power & charging | Battery 2-pack, 10A charger, voltmeter, LM2596 | 213.97* |
 | Protection & distribution | 30A breaker 4-pack, 12-way fuse block, busbar | 62.97 |
 | Pump & plumbing | Pump, accumulator, strainer, heater, mixing valve, flow sensor | 327.90 |
-| Plumbing fittings & hose | Y valve, shower hose, supply hose, tubing, hose barb | 75.95 |
-| Control | Automotive relay | 25.99 |
+| Plumbing fittings & hose | Y valve, shower hose, supply hose, 3× 9" hose, tubing, 1" suction hose, hose barb | 158.71 |
+| Control | M5Stack Tough, PaHub, RFID2, 4Relay, automotive relay | 136.87** |
 | Accessories | USB-C buck converter | 13.99 |
-| Connectors, wire, terminals | Anderson, DT, lever, 2× wire, 2× ring terminals | 102.22 |
-| **Selected subtotal** | | **≈ $822.99** |
+| Connectors, wire, terminals | Anderson, DT, lever, SAE pigtail, 2× wire, 2× ring terminals | 115.21 |
+| **Selected subtotal** | | **≈ $1,029.62** |
 
 \* LM2596 price not shown on the wishlist; excluded from the number.
+\*\* RFID2 price not shown on the wishlist; excluded from the number.
 
 **Not yet on the list / still to source:** solar panel, solar charge
-controller, M5Stack Tough / PaHub / RFID2 / 4Relay, SD card, RTC, USB-C
-panel outlet, LED strip, 12/16 AWG power wire, MC4 & Grove connectors,
-ATO/ATC fuse assortment, NFC tags.
+controller, SD card, RTC, USB-C panel outlet, LED strip, 12/16 AWG power
+wire, MC4 & Grove connectors, ATO/ATC fuse assortment, NFC tags.
 
 **Alternates & optional (not in subtotal):** 20Ah battery, 5A charger,
 red voltmeter, USA Adventure Gear pump, Waterdrop under-sink filter,
