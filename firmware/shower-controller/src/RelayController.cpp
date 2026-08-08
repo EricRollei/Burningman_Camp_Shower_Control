@@ -1,0 +1,65 @@
+#include "RelayController.h"
+
+namespace {
+constexpr uint8_t MODE_REGISTER = 0x10;
+constexpr uint8_t CONTROL_REGISTER = 0x11;
+constexpr uint8_t AUTO_LED_MODE = 0x01;
+
+uint8_t channelMask(uint8_t channel) {
+  return channel >= 1 && channel <= 4 ? (1U << (4U - channel)) : 0;
+}
+}  // namespace
+
+bool RelayController::begin(TwoWire& wire, uint8_t address) {
+  wire_ = &wire;
+  address_ = address;
+  state_ = 0;
+
+  wire_->beginTransmission(address_);
+  healthy_ = wire_->endTransmission() == 0;
+  if (!healthy_) return false;
+
+  // Auto mode makes each indicator LED follow its relay.
+  healthy_ = writeRegister(MODE_REGISTER, AUTO_LED_MODE) && allOff();
+  return healthy_;
+}
+
+bool RelayController::set(uint8_t channel, bool on) {
+  const uint8_t mask = channelMask(channel);
+  if (mask == 0 || wire_ == nullptr) return false;
+
+  const uint8_t next = on ? (state_ | mask) : (state_ & ~mask);
+  if (!writeRegister(CONTROL_REGISTER, next)) {
+    healthy_ = false;
+    return false;
+  }
+  state_ = next;
+  healthy_ = true;
+  return true;
+}
+
+bool RelayController::toggle(uint8_t channel) {
+  return set(channel, !isOn(channel));
+}
+
+bool RelayController::allOff() {
+  if (wire_ == nullptr) return false;
+  if (!writeRegister(CONTROL_REGISTER, 0)) {
+    healthy_ = false;
+    return false;
+  }
+  state_ = 0;
+  return true;
+}
+
+bool RelayController::isOn(uint8_t channel) const {
+  return (state_ & channelMask(channel)) != 0;
+}
+
+bool RelayController::writeRegister(uint8_t reg, uint8_t value) {
+  wire_->beginTransmission(address_);
+  wire_->write(reg);
+  wire_->write(value);
+  return wire_->endTransmission() == 0;
+}
+

@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1320" viewBox="0 0 1800 1320">
+  <title>Power Diagram v2 — Burning Man Camp Shower Controller</title>
+  <desc>One complete, independent 12 volt shower station. Solid red lines are positive power, solid black lines are negative returns, blue lines are data/control, and orange paths are AC or solar charging inputs. Items requiring bench-test or design decisions are marked TBD.</desc>
+  <style>
+    .title{font:700 30px Arial,sans-serif;fill:#13202b}.sub{font:16px Arial,sans-serif;fill:#34495e}.h{font:700 17px Arial,sans-serif;fill:#13202b}.t{font:14px Arial,sans-serif;fill:#13202b}.s{font:12px Arial,sans-serif;fill:#34495e}.tiny{font:11px Arial,sans-serif;fill:#34495e}.box{fill:#fff;stroke:#263746;stroke-width:2}.power{fill:#fff5f5;stroke:#b42318;stroke-width:2}.control{fill:#f3f8ff;stroke:#175cd3;stroke-width:2}.charge{fill:#fff9e9;stroke:#b54708;stroke-width:2}.note{fill:#fffbe6;stroke:#b54708;stroke-width:1.5;stroke-dasharray:6 4}.pos{fill:none;stroke:#d92d20;stroke-width:4}.neg{fill:none;stroke:#202939;stroke-width:4}.sig{fill:none;stroke:#1570ef;stroke-width:3;stroke-dasharray:8 5}.chg{fill:none;stroke:#f79009;stroke-width:4}.thin{fill:none;stroke:#667085;stroke-width:1.5}.junction{fill:#fff;stroke:#202939;stroke-width:2}
+  </style>
+  <rect width="1800" height="1320" fill="#f8fafc"/>
+  <text x="900" y="42" text-anchor="middle" class="title">Power Diagram v2 — Burning Man Camp Shower Controller</text>
+  <text x="900" y="68" text-anchor="middle" class="sub">One complete, independent shower station · battery negative is the common return · duplicate this complete diagram for Station 2</text>
+
+  <!-- legend -->
+  <g transform="translate(60 92)"><path d="M0 0h65" class="pos"/><text x="75" y="5" class="s">12V positive power</text><path d="M250 0h65" class="neg"/><text x="325" y="5" class="s">12V / 5V negative return</text><path d="M530 0h65" class="sig"/><text x="605" y="5" class="s">low-voltage data / control</text><path d="M830 0h65" class="chg"/><text x="905" y="5" class="s">solar / AC charging path</text></g>
+
+  <!-- charging -->
+  <rect x="55" y="155" width="215" height="92" rx="8" class="charge"/><text x="162" y="184" text-anchor="middle" class="h">50W solar panel</text><text x="162" y="207" text-anchor="middle" class="s">MC4 connector (TBD)</text><text x="162" y="228" text-anchor="middle" class="s">panel + / −</text>
+  <rect x="340" y="155" width="225" height="92" rx="8" class="charge"/><text x="452" y="184" text-anchor="middle" class="h">Solar charge controller</text><text x="452" y="207" text-anchor="middle" class="s">12V MPPT/PWM — TBD</text><text x="452" y="228" text-anchor="middle" class="s">PV +/− → BAT +/−</text>
+  <rect x="55" y="305" width="215" height="92" rx="8" class="charge"/><text x="162" y="334" text-anchor="middle" class="h">Portable generator</text><text x="162" y="357" text-anchor="middle" class="s">AC output / model TBD</text><text x="162" y="378" text-anchor="middle" class="s">nominal 120V required</text>
+  <rect x="340" y="305" width="225" height="92" rx="8" class="charge"/><text x="452" y="332" text-anchor="middle" class="h">ECO-WORTHY AC charger</text><text x="452" y="354" text-anchor="middle" class="s">12V 10A LiFePO₄ charger</text><text x="452" y="376" text-anchor="middle" class="s">100–110VAC input shown in listing:</text><text x="452" y="390" text-anchor="middle" class="s">verify generator compatibility</text>
+  <path d="M270 201H340" class="chg"/><text x="305" y="191" text-anchor="middle" class="tiny">PV cable</text>
+  <path d="M270 351H340" class="chg"/><text x="305" y="341" text-anchor="middle" class="tiny">AC cord</text>
+
+  <!-- battery -->
+  <rect x="680" y="155" width="285" height="180" rx="10" class="power"/><text x="822" y="187" text-anchor="middle" class="h">DC HOUSE LiFePO₄ battery</text><text x="822" y="211" text-anchor="middle" class="t">12.8V · 30Ah · approx. 384Wh</text><text x="822" y="234" text-anchor="middle" class="s">Battery pigtail: positive, negative,</text><text x="822" y="253" text-anchor="middle" class="s">Anderson SB50 quick disconnect only</text><circle cx="700" cy="289" r="8" fill="#d92d20"/><text x="718" y="294" class="t">BAT +</text><circle cx="915" cy="289" r="8" fill="#202939"/><text x="864" y="294" class="t">BAT −</text>
+  <path d="M565 201H625V289H700" class="chg"/><text x="595" y="278" class="tiny">solar BAT +</text><path d="M565 224H605V315H915V289" class="chg"/><text x="700" y="330" class="tiny">solar BAT −</text>
+  <path d="M565 351H650V289H700" class="chg"/><text x="578" y="340" class="tiny">charger +</text><path d="M565 376H630V335H915V289" class="chg"/><text x="720" y="354" class="tiny">charger −</text>
+
+  <!-- monitor and main disconnect -->
+  <rect x="720" y="410" width="205" height="68" rx="7" class="control"/><text x="822" y="437" text-anchor="middle" class="h">Battery voltmeter</text><text x="822" y="458" text-anchor="middle" class="s">Gasedin mini LED monitor</text>
+  <path d="M700 289V410H720" class="pos"/><path d="M915 289V410H925" class="neg"/>
+  <rect x="1050" y="205" width="180" height="95" rx="8" class="power"/><text x="1140" y="238" text-anchor="middle" class="h">Anderson SB50</text><text x="1140" y="260" text-anchor="middle" class="s">system quick disconnect</text><text x="1140" y="281" text-anchor="middle" class="s">12 AWG main feed</text>
+  <rect x="1300" y="205" width="190" height="95" rx="8" class="power"/><text x="1395" y="238" text-anchor="middle" class="h">30A manual-reset breaker</text><text x="1395" y="260" text-anchor="middle" class="s">main disconnect + protection</text><text x="1395" y="281" text-anchor="middle" class="s">battery positive only</text>
+  <path d="M700 289H1050" class="pos"/><path d="M1230 252H1300" class="pos"/>
+
+  <!-- distribution -->
+  <rect x="1515" y="155" width="230" height="220" rx="10" class="box"/><text x="1630" y="186" text-anchor="middle" class="h">DaierTek 12-way fuse block</text><text x="1630" y="208" text-anchor="middle" class="s">ATO/ATC fused positive outputs</text><line x1="1530" y1="222" x2="1730" y2="222" class="thin"/><text x="1630" y="246" text-anchor="middle" class="t">+ input from 30A breaker</text><text x="1630" y="270" text-anchor="middle" class="t">Integrated negative return bus</text><text x="1630" y="296" text-anchor="middle" class="s">All load negatives terminate here</text><text x="1630" y="320" text-anchor="middle" class="s">Unused positions: capped / labeled</text><text x="1630" y="345" text-anchor="middle" class="s">branch fuses protect branch wire</text>
+  <path d="M1490 252H1515" class="pos"/>
+  <path d="M915 289H980V405H1515" class="neg"/><circle cx="980" cy="405" r="6" class="junction"/><text x="1000" y="397" class="tiny">common battery negative return</text>
+
+  <!-- positive and negative buses implicit on fuse block -->
+  <text x="1525" y="413" class="h">Fused 12V branch circuits</text>
+  <!-- load fuse labels -->
+  <g class="s"><text x="1525" y="438">F1 Pump — 15A — 12 AWG</text><text x="1525" y="462">F2 USB-C — 5A — 18 AWG</text><text x="1525" y="486">F3 LED strip — fuse TBD — 16 AWG</text><text x="1525" y="510">F4 M5Stack Tough — 3–5A — 18 AWG</text><text x="1525" y="534">F5 Utility lights — 10A — 16 AWG</text><text x="1525" y="558">F6–F12 spare / future expansion</text></g>
+
+  <!-- control system -->
+  <rect x="55" y="535" width="250" height="148" rx="9" class="control"/><text x="180" y="566" text-anchor="middle" class="h">M5Stack Tough (ESP32)</text><text x="180" y="589" text-anchor="middle" class="s">controller / touchscreen / SD logging</text><text x="180" y="612" text-anchor="middle" class="s">12V input via RS485 connector</text><text x="180" y="635" text-anchor="middle" class="s">USB-C used for programming only</text><text x="180" y="660" text-anchor="middle" class="s">GPIO map: flow, switch, LED data — TBD</text>
+  <rect x="380" y="535" width="210" height="148" rx="9" class="control"/><text x="485" y="566" text-anchor="middle" class="h">M5Stack PaHub v2.1</text><text x="485" y="589" text-anchor="middle" class="s">PCA9548A, 6-port I²C hub</text><text x="485" y="615" text-anchor="middle" class="s">Grove I²C from M5Stack</text><text x="485" y="640" text-anchor="middle" class="s">separate 5V injection:</text><text x="485" y="659" text-anchor="middle" class="s">TBD after bench test</text>
+  <path d="M305 605H380" class="sig"/><text x="342" y="595" text-anchor="middle" class="tiny">Grove I²C + GND</text>
+  <path d="M1515 498H330V580H305" class="pos"/><text x="700" y="490" class="tiny">F4: 12V + (3–5A), 18 AWG → RS485 power input</text><path d="M1515 405H330V640H305" class="neg"/>
+
+  <!-- PaHub peripherals -->
+  <rect x="680" y="535" width="190" height="70" rx="8" class="control"/><text x="775" y="562" text-anchor="middle" class="h">RFID2 reader</text><text x="775" y="583" text-anchor="middle" class="s">13.56MHz / tag UID</text>
+  <rect x="680" y="625" width="190" height="70" rx="8" class="control"/><text x="775" y="652" text-anchor="middle" class="h">Keypad / buttons</text><text x="775" y="673" text-anchor="middle" class="s">I²C module — TBD</text>
+  <rect x="680" y="715" width="190" height="70" rx="8" class="control"/><text x="775" y="742" text-anchor="middle" class="h">M5Stack 4Relay</text><text x="775" y="763" text-anchor="middle" class="s">I²C · relay contacts</text>
+  <path d="M590 572H680" class="sig"/><path d="M590 650H680" class="sig"/><path d="M590 760H680" class="sig"/>
+  <text x="617" y="548" class="tiny">Grove port 1</text><text x="617" y="627" class="tiny">Grove port 2</text><text x="617" y="738" class="tiny">Grove port 3</text>
+  <rect x="380" y="715" width="210" height="70" rx="8" class="note"/><text x="485" y="742" text-anchor="middle" class="h">Optional 5V supply</text><text x="485" y="763" text-anchor="middle" class="s">LM2596 12V→5V to PaHub — TBD</text>
+  <path d="M1515 580H355V750H380" class="pos"/><path d="M1515 405H355V777H380" class="neg"/><path d="M590 750H680" class="sig"/>
+
+  <!-- inputs -->
+  <rect x="55" y="760" width="250" height="75" rx="8" class="control"/><text x="180" y="789" text-anchor="middle" class="h">Flow sensor</text><text x="180" y="810" text-anchor="middle" class="s">SENSTREE G1/2 Hall sensor</text><text x="180" y="827" text-anchor="middle" class="s">pulse voltage / GPIO conditioning TBD</text>
+  <rect x="55" y="860" width="250" height="63" rx="8" class="control"/><text x="180" y="888" text-anchor="middle" class="h">Shower switch</text><text x="180" y="909" text-anchor="middle" class="s">GPIO input, pin / wiring TBD</text>
+  <path d="M305 798H340V665H305" class="sig"/><path d="M305 891H360V675H305" class="sig"/>
+
+  <!-- relay / load circuits -->
+  <rect x="1010" y="535" width="220" height="96" rx="8" class="power"/><text x="1120" y="563" text-anchor="middle" class="h">Automotive relay</text><text x="1120" y="585" text-anchor="middle" class="s">40/30A, 12V coil + harness</text><text x="1120" y="607" text-anchor="middle" class="s">coil: 4Relay #1 contacts</text>
+  <rect x="1300" y="535" width="210" height="96" rx="8" class="power"/><text x="1405" y="563" text-anchor="middle" class="h">SEAFLO 42 pump</text><text x="1405" y="585" text-anchor="middle" class="s">12V · 3 GPM · 55 PSI</text><text x="1405" y="607" text-anchor="middle" class="s">F1 15A, 12 AWG</text>
+  <path d="M870 750H920V580H1010" class="sig"/><text x="892" y="570" class="tiny">Relay #1 coil control</text><path d="M1515 438H1260V555H1230" class="pos"/><path d="M1230 585H1300" class="pos"/><path d="M1515 405H1280V610H1300" class="neg"/>
+
+  <rect x="1010" y="670" width="220" height="96" rx="8" class="power"/><text x="1120" y="698" text-anchor="middle" class="h">Relay #2 contact</text><text x="1120" y="720" text-anchor="middle" class="s">session-gates USB-C branch</text><text x="1120" y="742" text-anchor="middle" class="s">M5Stack 4Relay output #2</text>
+  <rect x="1300" y="670" width="210" height="96" rx="8" class="power"/><text x="1405" y="698" text-anchor="middle" class="h">BEYIMEI USB-C converter</text><text x="1405" y="720" text-anchor="middle" class="s">12V → 5V, 3A / 15W</text><text x="1405" y="742" text-anchor="middle" class="s">F2 5A, 18 AWG</text>
+  <rect x="1570" y="670" width="175" height="96" rx="8" class="box"/><text x="1657" y="708" text-anchor="middle" class="h">Panel USB-C outlet</text><text x="1657" y="731" text-anchor="middle" class="s">part / connector TBD</text>
+  <path d="M870 750H1010" class="sig"/><path d="M1515 462H1260V690H1230" class="pos"/><path d="M1230 718H1300" class="pos"/><path d="M1510 718H1570" class="pos"/><path d="M1515 405H1280V750H1300" class="neg"/><path d="M1510 750H1570" class="neg"/>
+
+  <rect x="1010" y="815" width="220" height="96" rx="8" class="power"/><text x="1120" y="843" text-anchor="middle" class="h">Relay #3 contact</text><text x="1120" y="865" text-anchor="middle" class="s">switches LED strip 12V power</text><text x="1120" y="887" text-anchor="middle" class="s">M5Stack 4Relay output #3</text>
+  <rect x="1300" y="815" width="210" height="96" rx="8" class="power"/><text x="1405" y="843" text-anchor="middle" class="h">12V addressable LED strip</text><text x="1405" y="865" text-anchor="middle" class="s">~24 ft / part + current TBD</text><text x="1405" y="887" text-anchor="middle" class="s">F3 + power injection TBD</text>
+  <path d="M870 750H950V845H1010" class="sig"/><path d="M1515 486H1260V835H1230" class="pos"/><path d="M1230 863H1300" class="pos"/><path d="M1515 405H1280V895H1300" class="neg"/><path d="M305 650H1260V900H1300" class="sig"/><text x="1010" y="928" class="tiny">M5Stack GPIO LED data → strip DIN; GPIO / level shifting / termination TBD</text>
+
+  <rect x="1010" y="960" width="220" height="96" rx="8" class="power"/><text x="1120" y="988" text-anchor="middle" class="h">Relay #4 contact</text><text x="1120" y="1010" text-anchor="middle" class="s">utility lights / spare switch</text><text x="1120" y="1032" text-anchor="middle" class="s">M5Stack 4Relay output #4</text>
+  <rect x="1300" y="960" width="210" height="96" rx="8" class="power"/><text x="1405" y="988" text-anchor="middle" class="h">Utility lights / spare load</text><text x="1405" y="1010" text-anchor="middle" class="s">12V load, final part TBD</text><text x="1405" y="1032" text-anchor="middle" class="s">F5 10A, 16 AWG</text>
+  <path d="M870 750H940V990H1010" class="sig"/><path d="M1515 510H1260V980H1230" class="pos"/><path d="M1230 1008H1300" class="pos"/><path d="M1515 405H1280V1040H1300" class="neg"/>
+
+  <!-- safety / scope notes -->
+  <rect x="55" y="1030" width="850" height="205" rx="9" class="note"/>
+  <text x="78" y="1060" class="h">Design and safety notes — v2 documents the current plan; it is not yet a released fabrication schematic.</text>
+  <text x="78" y="1090" class="t">1. Both charging sources land at the battery-side node, ahead of the 30A breaker. Disconnect AC, solar, breaker, then Anderson for battery removal.</text>
+  <text x="78" y="1117" class="t">2. Do not connect the battery or choose final fuses until actual load current, wire lengths, LED current, and pump inrush are verified.</text>
+  <text x="78" y="1144" class="t">3. Confirm the flow-sensor output voltage, required GPIO protection, M5Stack/PaHub power scheme, 4Relay contact wiring, and LED data-level compatibility on the bench.</text>
+  <text x="78" y="1171" class="t">4. The propane water heater uses propane and its own ignition batteries; it has no electrical connection to this 12V diagram.</text>
+  <text x="78" y="1198" class="t">5. All negative returns shown converge at the fuse block’s negative bus, which returns to BAT −. Use labeled, strain-relieved connections appropriate for playa exposure.</text>
+
+  <rect x="970" y="1110" width="775" height="125" rx="9" class="box"/>
+  <text x="990" y="1140" class="h">Referenced documents</text><text x="990" y="1164" class="t">Wiring.md · BOM.md · Assembly.md · SoftwareSpec.md · Calibration.md</text><text x="990" y="1190" class="s">Open decisions remain deliberately marked TBD: generator, solar controller, LED strip/fuse, GPIO assignments, PaHub 5V, connectors, and verification values.</text>
+  <text x="900" y="1285" text-anchor="middle" class="s">v2 · generated from current project documentation · verify against actual component manuals and bench tests before build</text>
+</svg>
