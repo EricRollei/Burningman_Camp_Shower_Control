@@ -7,6 +7,7 @@ currently attached to the prototype:
 - M5Stack Unit 4Relay on external I2C address `0x26`
 - protected flow-meter pulse signal on GPIO26
 - onboard microSD card for persistent CSV logging
+- local Wi-Fi setup page for UID enrollment
 
 ## MVP behavior
 
@@ -18,6 +19,33 @@ currently attached to the prototype:
 5. Tap **END TAG** to stop attribution.
 6. Tap a relay button to toggle that channel. Leave real loads disconnected
    during the first bench test.
+
+## Phone enrollment prototype
+
+At boot the Tough creates this local setup network:
+
+| Setting | Value |
+|---|---|
+| Wi-Fi name | `CampShower-Setup` |
+| Wi-Fi password | `camp-shower-setup` |
+| Setup page | `http://192.168.4.1/` |
+
+The network is local and does not provide internet access. To enroll a tag:
+
+1. Join `CampShower-Setup` from a phone.
+2. Open `http://192.168.4.1/` in the phone browser.
+3. Enter a member name and tap **Enroll next tag**.
+4. Tap the tag against the Tough's RFID2 reader.
+
+The association is written to `/MEMBERS.CSV` on the microSD card. The setup
+page lists registered tags and their lifetime pulse totals, and supports rename
+and delete operations. Deleting a registration does not delete its historical
+usage from `/PULSES.CSV`.
+
+The first prototype uses the tag's factory UID as its identity; it does not
+write user data onto the tag. The JSON endpoints under `/api/` intentionally
+keep UID, member registry, and usage totals separate so the same model can be
+shared with the other shower and fill-station controllers later.
 
 The CSV is append-only and is replayed at boot to restore each tag's total:
 

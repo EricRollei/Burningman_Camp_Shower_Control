@@ -1,8 +1,10 @@
 #include <M5Unified.h>
 #include <Wire.h>
 
+#include "AdminServer.h"
 #include "Config.h"
 #include "FlowMeter.h"
+#include "MemberRegistry.h"
 #include "PulseStorage.h"
 #include "RelayController.h"
 #include "RfidReader.h"
@@ -11,10 +13,13 @@ namespace {
 
 FlowMeter flow;
 PulseStorage storage;
+MemberRegistry members;
+AdminServer admin(members, storage);
 RelayController relays;
 RfidReader rfid;
 
 char activeUid[21] = {0};
+char activeName[33] = {0};
 char lastScannedUid[21] = {0};
 uint32_t lastScanMs = 0;
 uint32_t lastRfidPollMs = 0;
@@ -79,6 +84,12 @@ void drawScreen() {
   M5.Display.setTextSize(2);
   M5.Display.drawString(hasActiveTag() ? activeUid : "--", 8, 49);
 
+  if (hasActiveTag()) {
+    M5.Display.setTextSize(1);
+    M5.Display.setTextColor(TFT_CYAN);
+    M5.Display.drawString(activeName, 166, 52);
+  }
+
   const uint64_t persisted = hasActiveTag() ? storage.totalFor(activeUid) : 0;
   char pulses[64];
   snprintf(pulses, sizeof(pulses), "session %lu | tag %llu",
@@ -139,6 +150,7 @@ void endActiveTag() {
   Serial.printf("[RFID] end uid=%s session_pulses=%lu\n", activeUid,
                 static_cast<unsigned long>(sessionPulses));
   activeUid[0] = '\0';
+  activeName[0] = '\0';
   pendingPulses = 0;
   sessionPulses = 0;
   setStatus("Tag ended");
@@ -150,6 +162,9 @@ void selectTag(const String& uid) {
   if (!changing && hasActiveTag()) flushPulses();
 
   strlcpy(activeUid, uid.c_str(), sizeof(activeUid));
+  const char* registeredName = members.nameFor(activeUid);
+  strlcpy(activeName, registeredName != nullptr ? registeredName : "Unregistered",
+          sizeof(activeName));
   pendingPulses = 0;
   sessionPulses = 0;
   if (!storage.selectTag(activeUid)) {
@@ -199,6 +214,11 @@ void pollRfid() {
   strlcpy(lastScannedUid, uid.c_str(), sizeof(lastScannedUid));
   lastScanMs = millis();
   rfid.haltTag();
+  if (admin.onTagScanned(uid)) {
+    setStatus(String("Enrolled ") + uid);
+    return;
+  }
+
   if (!repeat) selectTag(uid);
 }
 
@@ -301,6 +321,10 @@ void setup() {
   Serial.printf("[SD] ready=%s size_mb=%llu path=%s\n", sdReady ? "yes" : "no",
                 static_cast<unsigned long long>(storage.cardSizeMB()),
                 Config::LOG_PATH);
+  const bool membersReady = sdReady && members.begin();
+  Serial.printf("[MEMBERS] ready=%s count=%u path=%s\n",
+                membersReady ? "yes" : "no",
+                static_cast<unsigned>(members.count()), Config::MEMBER_PATH);
 
   // M5Unified owns Wire1 for internal Tough hardware. External Port A devices
   // stay on Wire so M5.update() cannot reassign their pins.
@@ -315,7 +339,14 @@ void setup() {
                 devicePresent(Config::RFID_ADDRESS) ? "yes" : "no",
                 rfid.version());
 
-  setStatus(sdReady && relayReady && rfidReady ? "Ready" : "Check red status");
+  const bool adminReady = admin.begin();
+  Serial.printf("[WEB] ready=%s ssid=%s address=http://%s/\n",
+                adminReady ? "yes" : "no", Config::WIFI_AP_NAME,
+                admin.address().c_str());
+
+  setStatus(sdReady && relayReady && rfidReady && membersReady && adminReady
+                ? String("Setup: ") + admin.address()
+                : "Check red status");
   Serial.printf("[SMOKE] sd=%s rfid=%s relay=%s flow_pin=%u ready=%u\n",
                 sdReady ? "ok" : "fail", rfidReady ? "ok" : "fail",
                 relayReady ? "ok" : "fail", Config::FLOW_PIN,
@@ -326,6 +357,7 @@ void setup() {
 
 void loop() {
   M5.update();
+  admin.handle();
   handleTouch();
   handleSerial();
   pollFlow();

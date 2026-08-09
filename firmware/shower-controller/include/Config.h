@@ -24,5 +24,11 @@ constexpr uint32_t SD_FREQUENCY = 10000000;
 
 constexpr uint32_t LOG_INTERVAL_MS = 2000;
 constexpr char LOG_PATH[] = "/PULSES.CSV";
+constexpr char MEMBER_PATH[] = "/MEMBERS.CSV";
+
+// Bench-prototype setup network. Change the password before field use.
+constexpr char WIFI_AP_NAME[] = "CampShower-Setup";
+constexpr char WIFI_AP_PASSWORD[] = "camp-shower-setup";
+constexpr char STATION_NAME[] = "shower-controller-prototype";
 
 }  // namespace Config
