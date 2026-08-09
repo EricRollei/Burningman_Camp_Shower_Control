@@ -207,6 +207,325 @@ This allows charging to continue with the master breaker OFF while still allowin
 
 ------------------------------------------------------------------------
 
+## Control Circuits
+
+![Control circuit diagram](assets/Control_Circuit_Diagram.png)
+
+> Editable source: [Control.drawio](drawings/Control.drawio)
+> — open with [draw.io / diagrams.net](https://app.diagrams.net) or the
+> VS Code Draw.io Integration extension.
+
+The control system is built around an **M5Stack Tough** controller. The Tough handles RFID/NFC authentication, shower timing, water-flow measurement, relay control, lighting control, data logging, and future status/alert functions.
+
+The control electronics are electrically separate from the high-current load distribution, except where the M5Stack relay contacts switch the 12V loads.
+
+### M5Stack Tough Power
+
+The M5Stack Tough may be powered directly from the 12V LiFePO₄ system through its 6–24V DC power input.
+
+The Tough therefore does not require a separate 12V-to-5V converter for its own power.
+
+The Tough remains powered whenever the master power circuit is enabled so it can:
+
+- Monitor RFID/NFC tags.
+- Control the shower session.
+- Count flow-meter pulses.
+- Operate the relay module.
+- Control lighting.
+- Log water usage.
+- Monitor charging/battery status.
+- Provide future Wi-Fi or Bluetooth status/alert functions.
+
+USB-C on the Tough should normally be reserved for programming/service rather than permanent power.
+
+---
+
+## I²C Control Bus
+
+The M5Stack Tough communicates with most control peripherals through its I²C connection.
+
+An **I²C hub / multiplexer** provides multiple physical connections from the Tough to the individual control devices.
+
+Planned I²C devices include:
+
+- M5Stack RFID2 RFID/NFC reader.
+- M5Stack Unit 4Relay.
+- Solar charging voltage/current monitor.
+- Future keypad or button interface.
+- Future battery-monitoring hardware.
+- Additional sensors or control modules as required.
+
+The I²C cable carries:
+
+- 5V
+- Ground
+- SDA
+- SCL
+
+The M5Stack Unit 4Relay receives the power required to operate its internal electronics and relay coils from this 5V I²C/Grove connection.
+
+The relay load terminals do **not** provide power to the relay electronics and do not require a ground connection in order for a relay to operate.
+
+---
+
+## RFID / NFC Reader
+
+The RFID2 reader is connected to the I²C hub.
+
+When a user presents an authorized RFID/NFC tag:
+
+1. The Tough reads the tag UID.
+2. The UID is matched against the camp user database.
+3. The shower session is authorized.
+4. The appropriate relay-controlled accessories become available.
+5. Water usage is recorded against that user's UID.
+
+NTAG-series NFC tags will be tested with the RFID2 reader before final tag selection.
+
+---
+
+## M5Stack Unit 4Relay
+
+The M5Stack Unit 4Relay is controlled over I²C.
+
+The unit contains four independent normally-open relay channels.
+
+Each relay is rated by M5Stack for:
+
+- 10A continuous
+- 16A instantaneous
+- Up to 28V DC
+
+The relay contacts are electrically independent of the 5V control circuitry.
+
+The current proposed relay functions are:
+
+| Relay | Function |
+|------|----------|
+| CH1 | Shower pump |
+| CH2 | USB-C charging power |
+| CH3 | LED / entertainment power |
+| CH4 | Utility lighting or future use |
+
+The exact assignment may be changed in software if required.
+
+---
+
+## Pump Control
+
+The SEAFLO 42-series 12V pump is controlled by one channel of the M5Stack 4Relay module.
+
+The basic circuit is:
+
+Fused +12V  
+→ M5Stack relay contact  
+→ Pump positive
+
+Pump negative  
+→ Fuse-block negative bus
+
+The relay coil itself is powered from the M5Stack 5V/I²C supply.
+
+### External Automotive Relay
+
+An automotive relay is currently shown in the drawing as an optional second relay between the M5Stack relay and the pump.
+
+The SEAFLO pump draws approximately 7–8A maximum, while the M5Stack relay is rated for 10A continuous and 16A instantaneous.
+
+Because the pump is within the M5Stack relay rating, the current plan is to bench-test the pump directly through the M5Stack relay.
+
+If the M5Stack relay operates reliably without excessive heating, contact arcing, or other problems, the automotive relay can be eliminated.
+
+If additional isolation or contact-life margin is desired, the M5Stack relay can instead energize the automotive relay coil and the automotive relay can carry the pump current.
+
+The wiring should therefore allow either arrangement during testing.
+
+---
+
+## USB-C Charging Outlet
+
+A separate 12V-to-USB-C converter provides approximately 15W of USB-C power for users to charge a phone during their shower.
+
+This outlet is **not available continuously**.
+
+Its 12V input is switched by one channel of the M5Stack relay module.
+
+The software enables USB-C power only after:
+
+1. A valid RFID/NFC tag has been authenticated.
+2. A shower session has started.
+
+When the shower session ends or times out, the Tough turns the USB-C relay off.
+
+This prevents the shower charging outlet from becoming a general-purpose camp phone charger.
+
+The USB converter negative remains connected to the common negative bus; the positive supply is switched by the relay.
+
+---
+
+## LED Lighting and Entertainment Power
+
+The shower will have addressable LED lighting around its perimeter.
+
+The LED system uses a dedicated high-current 12V-to-5V converter rather than drawing LED power from the M5Stack Tough.
+
+The planned arrangement is:
+
+12V fused supply  
+→ 12V-to-5V high-current converter  
+→ LED strip power
+
+The LED controller/data signal is provided by the M5Stack control system.
+
+The LED strip ground and controller ground must share the common system ground so the data signal has the correct electrical reference.
+
+The LED power supply may also provide 5V power for entertainment accessories where appropriate.
+
+Decorative LEDs should normally operate at reduced brightness to limit power consumption.
+
+Software may provide:
+
+- User-selected colors.
+- Animated patterns.
+- RFID-specific effects.
+- Session-start effects.
+- Session-ending effects.
+- Water-use warnings.
+- Automatic shutdown when the shower is idle.
+
+---
+
+## Waterproof Bluetooth Speaker
+
+A waterproof Bluetooth speaker may be installed in the shower area.
+
+The speaker itself communicates wirelessly with the user's phone.
+
+Where external charging power is provided to the speaker, it should come from the separately regulated accessory/5V supply rather than from the M5Stack Tough.
+
+The entertainment power circuit may be switched along with the active shower session so accessories are not powered continuously.
+
+---
+
+## Solar Charging Monitor
+
+A voltage/current monitor may be installed in the solar-controller charging circuit.
+
+The purpose of this monitor is primarily diagnostic rather than load control.
+
+The M5Stack should be able to determine:
+
+- Battery voltage.
+- Whether the solar controller is producing charging current.
+- Approximate solar charging current.
+- Whether charging appears abnormal.
+
+Monitoring the solar charging branch rather than inserting a current-monitoring device into the entire shower power path avoids placing an additional component in series with the pump and other critical loads.
+
+Possible hardware includes an INA226-based I²C monitor or another suitable current/voltage sensor.
+
+The final monitoring hardware is still TBD.
+
+---
+
+## Battery and Charging Status
+
+Battery voltage may be used for basic status warnings.
+
+For example, software can distinguish approximately between:
+
+- Charging voltage.
+- Normal resting voltage.
+- Low battery voltage.
+- Critical battery voltage.
+
+Because LiFePO₄ batteries have a relatively flat discharge-voltage curve, voltage alone should not be treated as a precise state-of-charge measurement.
+
+Solar charging current provides an additional useful diagnostic.
+
+Example status:
+
+Battery: 13.4V  
+Solar: +2.7A  
+Status: CHARGING
+
+or:
+
+Battery: 12.8V  
+Solar: 0.0A  
+Status: LOW / NOT CHARGING
+
+Future software may send alerts over Wi-Fi or Bluetooth if:
+
+- Battery voltage becomes low.
+- Solar charging unexpectedly stops.
+- The controller detects a fault.
+- Water flow occurs when no session is authorized.
+- Other abnormal conditions are detected.
+
+---
+
+## Flow Sensor
+
+The water-flow sensor connects directly to an M5Stack GPIO input rather than through the I²C bus.
+
+The sensor produces pulses proportional to water flow.
+
+The Tough counts these pulses using an interrupt and converts the pulse count into gallons or liters using a calibration constant.
+
+Each shower's flow sensor will be calibrated individually.
+
+Water volume is calculated from the pulse count, not from pump run time.
+
+---
+
+## Grounds
+
+All DC systems share the same common negative reference at the fuse-block negative bus.
+
+This includes:
+
+- M5Stack Tough.
+- I²C peripherals.
+- Pump.
+- USB converter.
+- LED converter.
+- LED strip.
+- Charging monitors.
+- Sensors.
+- Accessory electronics.
+
+High-current negative returns should run directly to the negative bus rather than through M5Stack modules or small control wiring.
+
+---
+
+## Control-System Design Principle
+
+The M5Stack system controls loads but should carry as little high-current power as practical.
+
+The basic separation is:
+
+**Control power and signals**
+- Tough
+- I²C hub
+- RFID reader
+- Sensors
+- Relay coils
+- GPIO
+
+**Load power**
+- Pump
+- LED strip
+- USB charging
+- Utility lighting
+- Entertainment accessories
+
+The relay contacts form the interface between these two parts of the system.
+
+This arrangement minimizes the amount of high-current wiring passing through the controller electronics and makes individual loads easier to troubleshoot or replace.
+
+------------------------------------------------------------------------
+
 ## Next Phase
 
 Produce a complete engineering package:
