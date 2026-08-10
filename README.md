@@ -209,7 +209,7 @@ This allows charging to continue with the master breaker OFF while still allowin
 
 ## Control Circuits
 
-![Control circuit diagram](assets/Control_Circuit_Diagram.png)
+![Control circuit diagram](assets/Control-w-flow-music.drawio.png)
 
 > Editable source: [Control.drawio](drawings/Control.drawio)
 > — open with [draw.io / diagrams.net](https://app.diagrams.net) or the
