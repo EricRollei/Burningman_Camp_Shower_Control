@@ -526,6 +526,236 @@ This arrangement minimizes the amount of high-current wiring passing through the
 
 ------------------------------------------------------------------------
 
+## Plumbing System
+
+![Plumbing system diagram](assets/Plumbing.drawio.png)
+
+> Editable source: [Plumbing.drawio](drawings/Plumbing.drawio)
+> — open with [draw.io / diagrams.net](https://app.diagrams.net) or the
+> VS Code Draw.io Integration extension.
+
+Each shower is supplied from the camp's fresh-water tank through a common distribution manifold.
+
+The plumbing system is designed to provide pressurized water, propane-heated hot water, automatic temperature mixing, and accurate measurement of the actual water delivered to each shower.
+
+### Water Supply and Manifold
+
+Fresh water from the main supply tank enters the shower system through flexible reinforced hose and connects to a distribution manifold.
+
+The manifold provides branches for:
+
+- Shower 1
+- Shower 2
+- Water-jug filling station
+- Additional future water connections if required
+
+Flexible reinforced 1/2-inch ID hose is used between the tank and manifold and for the primary shower supply plumbing.
+
+The suction-side hose should be reinforced so it cannot collapse under pump vacuum.
+
+---
+
+## Pump
+
+Each shower uses a 12V SEAFLO pressure pump rated at approximately:
+
+- 3.0 GPM
+- 55 PSI
+- Automatic pressure-switch operation
+
+The pump should be mounted as low as practical relative to the water tank.
+
+A low mounting position improves gravity feed to the pump inlet and makes the pump easier to prime.
+
+The pump draws water from the supply manifold and pressurizes the remainder of the shower plumbing.
+
+---
+
+## Accumulator
+
+An accumulator is installed immediately downstream of the pump.
+
+The accumulator:
+
+- Smooths pressure fluctuations from the diaphragm pump.
+- Reduces rapid pump cycling.
+- Provides a small pressurized reserve of water.
+- Produces steadier flow at the shower head.
+
+The accumulator air pressure can be adjusted through its Schrader-style valve.
+
+Initial pressure should be set according to the pump/accumulator manufacturer's recommendations and may be fine-tuned during system testing.
+
+---
+
+## Hot and Cold Water Split
+
+After the accumulator, the pressurized water supply splits into two branches.
+
+### Cold Branch
+
+One branch bypasses the water heater and supplies cold water directly to the thermostatic mixing valve.
+
+### Hot Branch
+
+The second branch passes through the propane water heater and then feeds the hot-water input of the thermostatic mixing valve.
+
+This arrangement is intentional.
+
+The propane heater can produce water that is considerably hotter than desired, especially during hot daytime conditions. Rather than attempting to regulate shower temperature using the heater alone, the system mixes heated water with unheated tank water.
+
+Manual valves on the hot and cold branches may be used for coarse balancing and service isolation.
+
+---
+
+## Propane Water Heater
+
+The shower uses a portable propane-powered water heater.
+
+The heater receives pressurized cold water from the pump and sends heated water to the thermostatic mixing valve.
+
+Important operating considerations:
+
+- The heater may produce excessively hot water during hot daytime conditions even at its minimum setting.
+- The heater must be installed with adequate ventilation.
+- Exhaust must not be obstructed.
+- When stored in freezing climates, water should be drained from the heater to prevent freeze damage.
+- Spare heater batteries should be kept available if the heater uses battery-powered ignition.
+
+The propane supply is provided by an external propane cylinder connected with the appropriate regulator/hose assembly.
+
+---
+
+## Thermostatic Mixing Valve
+
+The hot-water output from the heater and the cold-water bypass are connected to a thermostatic mixing valve.
+
+The valve has three connections:
+
+- HOT input
+- COLD input
+- MIXED output
+
+The thermostatic valve automatically adjusts the hot/cold ratio to maintain the selected output temperature.
+
+This provides more consistent shower temperature as:
+
+- Tank-water temperature changes.
+- Heater output changes.
+- Ambient temperature changes.
+- Water flow varies.
+
+The mixing valve should be installed according to the manufacturer's marked HOT, COLD, and MIXED ports.
+
+Manual valves on the hot and cold lines can be used for initial system balancing, but normal shower-temperature regulation should be performed by the thermostatic valve.
+
+---
+
+## Flow Meter
+
+The electronic flow meter is installed **after the thermostatic mixing valve**.
+
+This location is important because it allows the meter to measure the total volume of mixed water actually delivered to the user.
+
+The flow sequence is:
+
+Tank  
+→ Pump  
+→ Accumulator  
+→ Hot/Cold Split  
+→ Heater + Cold Bypass  
+→ Thermostatic Mixing Valve  
+→ Flow Meter  
+→ Shower Hose  
+→ Shower Head
+
+The flow meter sends pulses to the M5Stack control system.
+
+The controller counts those pulses and converts them into gallons or liters.
+
+Each flow meter should be calibrated individually after the complete plumbing system is assembled.
+
+Calibration should be performed by passing a known quantity of water through the shower and comparing that quantity with the pulse count reported by the controller.
+
+The calibrated pulses-per-liter or pulses-per-gallon value should then be stored in the shower controller configuration.
+
+---
+
+## Shower Hose and Handset
+
+The mixed and metered water feeds the flexible shower hose and handheld shower head.
+
+The selected shower head includes an on/off control so the user can temporarily stop water flow while washing.
+
+The pump's internal pressure switch and accumulator allow the plumbing system to remain pressurized while the shower-head valve is closed.
+
+When the shower head is reopened, pressure falls and the pump automatically resumes operation, provided the M5Stack controller has authorized the current shower session.
+
+---
+
+## Hose and Fitting Sizes
+
+Most of the shower plumbing uses:
+
+- 1/2-inch NPT fittings
+- 1/2-inch ID reinforced flexible hose
+- Hose-barb adapters
+- Stainless hose clamps
+- Flexible braided connector hoses where useful for assembly and vibration isolation
+
+Thread sealant appropriate for potable-water plumbing should be used on NPT threaded connections.
+
+Hose-barb connections should be secured with properly sized clamps.
+
+---
+
+## Plumbing Design Principles
+
+The plumbing system is designed around several priorities:
+
+1. **Reliable pump priming**
+   - Keep the pump low and minimize suction-side restriction.
+
+2. **Stable pressure**
+   - Use the accumulator to reduce diaphragm-pump pulsation and cycling.
+
+3. **Safe and consistent temperature**
+   - Do not depend on the propane heater alone for temperature control.
+   - Mix hot and cold water using the thermostatic valve.
+
+4. **Accurate water accounting**
+   - Measure flow after hot and cold water have been recombined.
+
+5. **Serviceability**
+   - Use flexible hoses and removable fittings where practical.
+   - Keep the pump, accumulator, heater, mixing valve, and flow meter accessible.
+
+6. **Water conservation**
+   - Use a shower head with an on/off control.
+   - Measure actual delivered water for each authenticated shower session.
+
+---
+
+## Plumbing Test Procedure
+
+Before normal use:
+
+1. Fill the supply tank.
+2. Open the appropriate manifold valve.
+3. Verify the pump primes correctly.
+4. Check all hose and threaded connections for leaks.
+5. Pressurize the system and verify the pump shuts off normally.
+6. Check accumulator operation.
+7. Run cold water through the shower.
+8. Start the propane heater and verify hot-water operation.
+9. Adjust the thermostatic mixing valve to the desired maximum shower temperature.
+10. Confirm that closing the shower-head valve stops flow and causes the pump to stop after pressure builds.
+11. Verify that reopening the shower head restarts water flow.
+12. Calibrate the flow meter using a known measured volume.
+13. Recheck all fittings for leaks after the system has reached operating temperature and pressure.
+
+------------------------------------------------------------------------
+
 ## Next Phase
 
 Produce a complete engineering package:
