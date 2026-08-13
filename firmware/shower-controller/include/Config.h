@@ -25,10 +25,21 @@ constexpr uint32_t SD_FREQUENCY = 10000000;
 constexpr uint32_t LOG_INTERVAL_MS = 2000;
 constexpr char LOG_PATH[] = "/PULSES.CSV";
 constexpr char MEMBER_PATH[] = "/MEMBERS.CSV";
+constexpr char SESSION_PATH[] = "/SESSIONS.CSV";
+constexpr char SETTINGS_PATH[] = "/SETTINGS.CSV";
+
+constexpr float DEFAULT_ALLOWANCE_GALLONS = 10.0F;
+constexpr float DEFAULT_PULSES_PER_GALLON = 450.0F;
+constexpr uint8_t PUMP_RELAY = 1;
+constexpr uint32_t MAX_SESSION_MS = 20UL * 60UL * 1000UL;
+constexpr uint32_t MAX_CALIBRATION_MS = 10UL * 60UL * 1000UL;
 
 // Bench-prototype setup network. Change the password before field use.
 constexpr char WIFI_AP_NAME[] = "CampShower-Setup";
 constexpr char WIFI_AP_PASSWORD[] = "camp-shower-setup";
 constexpr char STATION_NAME[] = "shower-controller-prototype";
+constexpr char ADMIN_USERNAME[] = "admin";
+// Used only to initialize a new SD card. Change this before field deployment.
+constexpr char INITIAL_ADMIN_PASSWORD[] = "change-me-shower";
 
 }  // namespace Config

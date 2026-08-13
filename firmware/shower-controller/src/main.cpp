@@ -8,16 +8,22 @@
 #include "PulseStorage.h"
 #include "RelayController.h"
 #include "RfidReader.h"
+#include "SessionStorage.h"
+#include "SettingsStore.h"
 
 namespace {
+enum class ScreenState { IDLE, ACTIVE, MESSAGE, CALIBRATION };
 
 FlowMeter flow;
-PulseStorage storage;
+PulseStorage pulseStorage;
 MemberRegistry members;
-AdminServer admin(members, storage);
+SessionStorage sessions;
+SettingsStore settings;
+AdminServer admin(members, pulseStorage, sessions, settings);
 RelayController relays;
 RfidReader rfid;
 
+ScreenState screenState = ScreenState::IDLE;
 char activeUid[21] = {0};
 char activeName[33] = {0};
 char lastScannedUid[21] = {0};
@@ -27,25 +33,38 @@ uint32_t lastLogMs = 0;
 uint32_t lastSensorTotal = 0;
 uint32_t pendingPulses = 0;
 uint32_t sessionPulses = 0;
+uint32_t sessionStartMs = 0;
+uint32_t messageUntilMs = 0;
+uint32_t calibrationStartPulses = 0;
+uint32_t calibrationStartMs = 0;
+float activeAllowance = 0.0F;
+float summaryGallons = 0.0F;
 bool rfidReady = false;
 bool relayReady = false;
+bool calibrationActive = false;
 bool screenDirty = true;
-String statusText = "Starting...";
+String messageTitle;
+String messageBody;
 String serialCommand;
 
-bool hasActiveTag() { return activeUid[0] != '\0'; }
+bool sessionActive() { return activeUid[0] != '\0'; }
+float gallonsFor(uint32_t pulses) {
+  const float calibration = settings.pulsesPerGallon();
+  return calibration > 0.0F ? pulses / calibration : 0.0F;
+}
 
-void setStatus(const String& text) {
-  statusText = text;
+void setMessage(const String& title, const String& body, uint32_t durationMs = 3500) {
+  messageTitle = title;
+  messageBody = body;
+  messageUntilMs = millis() + durationMs;
+  screenState = ScreenState::MESSAGE;
   screenDirty = true;
-  Serial.printf("[STATUS] %s\n", text.c_str());
+  Serial.printf("[STATUS] %s: %s\n", title.c_str(), body.c_str());
 }
 
 String uidToHex(const uint8_t* uid, int length) {
   char hex[21] = {0};
-  for (int i = 0; i < length && i < 10; ++i) {
-    snprintf(hex + i * 2, sizeof(hex) - i * 2, "%02X", uid[i]);
-  }
+  for (int i = 0; i < length && i < 10; ++i) snprintf(hex + i * 2, sizeof(hex) - i * 2, "%02X", uid[i]);
   return String(hex);
 }
 
@@ -54,127 +73,136 @@ bool devicePresent(uint8_t address) {
   return Wire.endTransmission() == 0;
 }
 
-void drawRelayButton(uint8_t channel, int x, int y, int width, int height) {
-  const bool on = relays.isOn(channel);
-  const uint16_t fill = on ? TFT_DARKGREEN : TFT_DARKGREY;
-  M5.Display.fillRoundRect(x, y, width, height, 8, fill);
-  M5.Display.drawRoundRect(x, y, width, height, 8,
-                           on ? TFT_GREEN : TFT_LIGHTGREY);
-  M5.Display.setTextDatum(middle_center);
-  M5.Display.setTextColor(TFT_WHITE, fill);
-  M5.Display.setTextSize(2);
-  char label[20];
-  snprintf(label, sizeof(label), "RELAY %u %s", channel, on ? "ON" : "OFF");
-  M5.Display.drawString(label, x + width / 2, y + height / 2);
-  M5.Display.setTextDatum(top_left);
+void drawCentered(const String& text, int y, int size, uint16_t color) {
+  M5.Display.setTextDatum(top_center);
+  M5.Display.setTextSize(size);
+  M5.Display.setTextColor(color);
+  M5.Display.drawString(text, 160, y);
+}
+
+void drawHeader(const char* label, uint16_t accent = TFT_CYAN) {
+  M5.Display.fillRect(0, 0, 320, 28, 0x0861);
+  M5.Display.setTextDatum(middle_left);
+  M5.Display.setTextSize(1);
+  M5.Display.setTextColor(accent, 0x0861);
+  M5.Display.drawString(label, 12, 14);
+  M5.Display.setTextDatum(middle_right);
+  M5.Display.setTextColor((pulseStorage.healthy() && relayReady && rfidReady) ? TFT_GREEN : TFT_ORANGE, 0x0861);
+  M5.Display.drawString((pulseStorage.healthy() && relayReady && rfidReady) ? "SYSTEM READY" : "SERVICE NEEDED", 308, 14);
 }
 
 void drawScreen() {
   M5.Display.startWrite();
-  M5.Display.fillScreen(TFT_BLACK);
-  M5.Display.setTextDatum(top_left);
-  M5.Display.setTextSize(2);
-  M5.Display.setTextColor(TFT_CYAN);
-  M5.Display.drawString("SHOWER HARDWARE MVP", 8, 6);
-
-  M5.Display.setTextSize(1);
-  M5.Display.setTextColor(TFT_WHITE);
-  M5.Display.drawString(hasActiveTag() ? "ACTIVE TAG" : "SCAN A TAG", 8, 34);
-  M5.Display.setTextColor(hasActiveTag() ? TFT_GREEN : TFT_YELLOW);
-  M5.Display.setTextSize(2);
-  M5.Display.drawString(hasActiveTag() ? activeUid : "--", 8, 49);
-
-  if (hasActiveTag()) {
-    M5.Display.setTextSize(1);
-    M5.Display.setTextColor(TFT_CYAN);
-    M5.Display.drawString(activeName, 166, 52);
-  }
-
-  const uint64_t persisted = hasActiveTag() ? storage.totalFor(activeUid) : 0;
-  char pulses[64];
-  snprintf(pulses, sizeof(pulses), "session %lu | tag %llu",
-           static_cast<unsigned long>(sessionPulses),
-           static_cast<unsigned long long>(persisted + pendingPulses));
-  M5.Display.setTextSize(1);
-  M5.Display.setTextColor(TFT_WHITE);
-  M5.Display.drawString(pulses, 8, 73);
-
-  const uint16_t sdColor = storage.healthy() ? TFT_GREEN : TFT_RED;
-  const uint16_t i2cColor = (rfidReady && relayReady) ? TFT_GREEN : TFT_RED;
-  M5.Display.setTextColor(sdColor);
-  M5.Display.drawString(storage.healthy() ? "SD OK" : "SD FAIL", 8, 88);
-  M5.Display.setTextColor(i2cColor);
-  M5.Display.drawString((rfidReady && relayReady) ? "I2C OK" : "I2C CHECK", 65,
-                        88);
-  M5.Display.setTextColor(TFT_LIGHTGREY);
-  M5.Display.drawString(statusText, 130, 88);
-
-  if (hasActiveTag()) {
-    M5.Display.fillRoundRect(240, 34, 72, 46, 6, TFT_MAROON);
-    M5.Display.drawRoundRect(240, 34, 72, 46, 6, TFT_RED);
+  M5.Display.fillScreen(0x020E);
+  if (screenState == ScreenState::IDLE) {
+    drawHeader("CAMP SHOWER");
+    drawCentered("READY WHEN", 52, 3, TFT_WHITE);
+    drawCentered("YOU ARE", 82, 3, TFT_WHITE);
+    M5.Display.fillCircle(160, 145, 34, 0x044A);
+    M5.Display.drawCircle(160, 145, 34, TFT_CYAN);
+    drawCentered("TAP", 128, 2, TFT_CYAN);
+    drawCentered("WRISTBAND", 151, 1, TFT_WHITE);
+    drawCentered("10 gallon default · admin adjustable", 214, 1, TFT_LIGHTGREY);
+  } else if (screenState == ScreenState::ACTIVE) {
+    drawHeader("SHOWER IN PROGRESS", TFT_GREEN);
+    drawCentered(activeName, 38, 2, TFT_WHITE);
+    char amount[32];
+    snprintf(amount, sizeof(amount), "%.2f gal", gallonsFor(sessionPulses));
+    drawCentered(amount, 72, 4, TFT_CYAN);
+    char limit[40];
+    snprintf(limit, sizeof(limit), "of %.1f gallon limit", activeAllowance);
+    drawCentered(limit, 116, 1, TFT_LIGHTGREY);
+    M5.Display.fillRoundRect(18, 140, 284, 14, 7, TFT_DARKGREY);
+    const float ratio = constrain(gallonsFor(sessionPulses) / activeAllowance, 0.0F, 1.0F);
+    M5.Display.fillRoundRect(18, 140, static_cast<int>(284 * ratio), 14, 7, ratio > .85F ? TFT_ORANGE : TFT_GREEN);
+    M5.Display.fillRoundRect(24, 174, 272, 52, 12, TFT_MAROON);
+    M5.Display.drawRoundRect(24, 174, 272, 52, 12, TFT_RED);
     M5.Display.setTextDatum(middle_center);
+    M5.Display.setTextSize(2);
     M5.Display.setTextColor(TFT_WHITE, TFT_MAROON);
-    M5.Display.setTextSize(1);
-    M5.Display.drawString("END TAG", 276, 57);
-    M5.Display.setTextDatum(top_left);
+    M5.Display.drawString("END SHOWER", 160, 200);
+  } else if (screenState == ScreenState::CALIBRATION) {
+    drawHeader("ADMIN CALIBRATION", TFT_ORANGE);
+    drawCentered("DISPENSING", 48, 3, TFT_ORANGE);
+    const uint32_t pulses = flow.totalPulses() - calibrationStartPulses;
+    drawCentered(String(pulses) + " pulses", 100, 3, TFT_WHITE);
+    drawCentered("Stop and enter the known volume", 152, 1, TFT_LIGHTGREY);
+    drawCentered("from the admin page", 171, 1, TFT_LIGHTGREY);
+    drawCentered("Pump is ON", 211, 1, TFT_GREEN);
+  } else {
+    drawHeader("CAMP SHOWER");
+    drawCentered(messageTitle, 66, 3, messageTitle == "NOT AUTHORIZED" ? TFT_ORANGE : TFT_CYAN);
+    drawCentered(messageBody, 122, 2, TFT_WHITE);
+    if (summaryGallons > 0.0F) drawCentered(String(summaryGallons, 2) + " gallons used", 166, 2, TFT_GREEN);
+    drawCentered("Returning to ready…", 215, 1, TFT_LIGHTGREY);
   }
-
-  drawRelayButton(1, 8, 108, 148, 54);
-  drawRelayButton(2, 164, 108, 148, 54);
-  drawRelayButton(3, 8, 174, 148, 54);
-  drawRelayButton(4, 164, 174, 148, 54);
   M5.Display.endWrite();
   screenDirty = false;
 }
 
 bool flushPulses() {
-  if (!hasActiveTag() || pendingPulses == 0) return true;
+  if (!sessionActive() || pendingPulses == 0) return true;
   const uint32_t delta = pendingPulses;
-  if (!storage.recordPulses(activeUid, delta)) {
-    setStatus("SD write failed");
-    return false;
-  }
+  if (!pulseStorage.recordPulses(activeUid, delta)) return false;
   pendingPulses = 0;
-  Serial.printf("[FLOW] uid=%s delta=%lu session=%lu total=%llu\n", activeUid,
-                static_cast<unsigned long>(delta),
-                static_cast<unsigned long>(sessionPulses),
-                static_cast<unsigned long long>(storage.totalFor(activeUid)));
-  screenDirty = true;
   return true;
 }
 
-void endActiveTag() {
-  if (!hasActiveTag()) return;
-  flushPulses();
-  storage.endTag(activeUid);
-  Serial.printf("[RFID] end uid=%s session_pulses=%lu\n", activeUid,
-                static_cast<unsigned long>(sessionPulses));
-  activeUid[0] = '\0';
-  activeName[0] = '\0';
-  pendingPulses = 0;
-  sessionPulses = 0;
-  setStatus("Tag ended");
+void stopPump() {
+  if (relayReady && !relays.allOff()) relayReady = false;
 }
 
-void selectTag(const String& uid) {
-  const bool changing = hasActiveTag() && uid != activeUid;
-  if (changing) endActiveTag();
-  if (!changing && hasActiveTag()) flushPulses();
+void endSession(const char* reason) {
+  if (!sessionActive()) return;
+  stopPump();
+  const bool rawLogged = flushPulses() && pulseStorage.endTag(activeUid);
+  const uint32_t endMs = millis();
+  summaryGallons = gallonsFor(sessionPulses);
+  const bool sessionLogged = sessions.append(sessionStartMs, endMs, activeUid,
+                                             sessionPulses, summaryGallons,
+                                             activeAllowance, reason);
+  const bool logged = rawLogged && sessionLogged;
+  Serial.printf("[SESSION] end uid=%s pulses=%lu gallons=%.4f reason=%s logged=%s\n",
+                activeUid, static_cast<unsigned long>(sessionPulses), summaryGallons,
+                reason, logged ? "yes" : "no");
+  activeUid[0] = '\0'; activeName[0] = '\0'; pendingPulses = 0; sessionPulses = 0;
+  setMessage(logged ? "SHOWER COMPLETE" : "LOGGING ERROR",
+             logged ? "Thank you!" : "Tell a camp admin", 5000);
+}
 
-  strlcpy(activeUid, uid.c_str(), sizeof(activeUid));
-  const char* registeredName = members.nameFor(activeUid);
-  strlcpy(activeName, registeredName != nullptr ? registeredName : "Unregistered",
-          sizeof(activeName));
-  pendingPulses = 0;
-  sessionPulses = 0;
-  if (!storage.selectTag(activeUid)) {
-    setStatus("Tag active; SD failed");
-  } else {
-    setStatus("Counting flow pulses");
+void startSession(const String& uid) {
+  const char* name = members.nameFor(uid.c_str());
+  if (name == nullptr || !members.enabledFor(uid.c_str())) {
+    summaryGallons = 0.0F;
+    setMessage("NOT AUTHORIZED", name ? "Wristband disabled" : "See a camp admin");
+    return;
   }
-  Serial.printf("[RFID] selected uid=%s restored_total=%llu\n", activeUid,
-                static_cast<unsigned long long>(storage.totalFor(activeUid)));
+  if (!pulseStorage.healthy() || !sessions.healthy() || !settings.healthy()) {
+    summaryGallons = 0.0F;
+    setMessage("UNAVAILABLE", "Usage storage needs service");
+    return;
+  }
+  if (!relayReady || !relays.set(Config::PUMP_RELAY, true)) {
+    relayReady = false;
+    stopPump();
+    summaryGallons = 0.0F;
+    setMessage("UNAVAILABLE", "Pump control needs service");
+    return;
+  }
+  strlcpy(activeUid, uid.c_str(), sizeof(activeUid));
+  strlcpy(activeName, name, sizeof(activeName));
+  activeAllowance = members.allowanceFor(activeUid);
+  pendingPulses = 0; sessionPulses = 0; sessionStartMs = millis(); lastLogMs = millis();
+  if (!pulseStorage.selectTag(activeUid)) {
+    stopPump();
+    activeUid[0] = '\0';
+    setMessage("UNAVAILABLE", "Could not start usage log");
+    return;
+  }
+  screenState = ScreenState::ACTIVE;
   screenDirty = true;
+  Serial.printf("[SESSION] start uid=%s name=%s allowance=%.2f relay=%u\n", activeUid,
+                activeName, activeAllowance, Config::PUMP_RELAY);
 }
 
 void pollFlow() {
@@ -182,132 +210,121 @@ void pollFlow() {
   const uint32_t delta = sensorTotal - lastSensorTotal;
   lastSensorTotal = sensorTotal;
   if (delta == 0) return;
-
-  if (hasActiveTag()) {
+  if (sessionActive()) {
     pendingPulses += delta;
     sessionPulses += delta;
     screenDirty = true;
-  } else {
-    Serial.printf("[FLOW] unassigned=%lu sensor_total=%lu\n",
-                  static_cast<unsigned long>(delta),
-                  static_cast<unsigned long>(sensorTotal));
+    if (gallonsFor(sessionPulses) >= activeAllowance) endSession("LIMIT");
   }
 }
 
 void pollRfid() {
   if (!rfidReady || millis() - lastRfidPollMs < 80) return;
   lastRfidPollMs = millis();
-
   uint8_t uidBytes[10];
   const int length = rfid.readUid(uidBytes, sizeof(uidBytes));
-  if (length == 0) {
-    if (rfid.lastError() < -1) {
-      Serial.printf("[RFID] fault=%d version=0x%02X\n", rfid.lastError(),
-                    rfid.version());
-      rfid.clearError();
-    }
-    return;
-  }
-
+  if (length <= 0) return;
   const String uid = uidToHex(uidBytes, length);
   const bool repeat = uid == lastScannedUid && millis() - lastScanMs < 2500;
   strlcpy(lastScannedUid, uid.c_str(), sizeof(lastScannedUid));
   lastScanMs = millis();
   rfid.haltTag();
-  if (admin.onTagScanned(uid)) {
-    setStatus(String("Enrolled ") + uid);
+  if (admin.onTagScanned(uid)) { setMessage("WRISTBAND ADDED", "Enrollment complete"); return; }
+  if (repeat || calibrationActive) return;
+  if (sessionActive()) {
+    if (uid == activeUid) return;
+    setMessage("SHOWER BUSY", "Finish the current shower");
+    screenState = ScreenState::ACTIVE;
+    screenDirty = true;
     return;
   }
-
-  if (!repeat) selectTag(uid);
+  startSession(uid);
 }
 
-void toggleRelay(uint8_t channel) {
-  if (!relayReady) {
-    setStatus("Relay not detected");
-    return;
+void handleCalibration() {
+  if (admin.takeCalibrationStartRequest()) {
+    if (sessionActive()) {
+      admin.reportCalibration(false, 0, "Finish the active shower first");
+    } else if (!relayReady || !relays.set(Config::PUMP_RELAY, true)) {
+      stopPump();
+      admin.reportCalibration(false, 0, "Pump control failed");
+    } else {
+      calibrationStartPulses = flow.totalPulses();
+      calibrationStartMs = millis();
+      calibrationActive = true;
+      screenState = ScreenState::CALIBRATION;
+      screenDirty = true;
+      admin.reportCalibration(true, 0, "Dispensing into known container");
+    }
   }
-  if (!relays.toggle(channel)) {
-    relayReady = false;
-    setStatus("Relay write failed");
-    return;
+  if (calibrationActive) {
+    const uint32_t pulses = flow.totalPulses() - calibrationStartPulses;
+    admin.reportCalibration(true, pulses, "Dispensing into known container");
+    static uint32_t lastCalibrationDraw = 0;
+    if (millis() - lastCalibrationDraw > 250) { screenDirty = true; lastCalibrationDraw = millis(); }
+    if (millis() - calibrationStartMs >= Config::MAX_CALIBRATION_MS) {
+      stopPump();
+      calibrationActive = false;
+      admin.reportCalibration(false, pulses, "Safety timeout; value unchanged");
+      setMessage("CALIBRATION STOPPED", "10 minute safety timeout");
+    }
   }
-  Serial.printf("[RELAY] channel=%u state=%s mask=0x%02X\n", channel,
-                relays.isOn(channel) ? "ON" : "OFF", relays.state());
-  setStatus(String("Relay ") + channel +
-            (relays.isOn(channel) ? " ON" : " OFF"));
+  float knownGallons = 0.0F;
+  if (admin.takeCalibrationStopRequest(knownGallons)) {
+    if (!calibrationActive) {
+      admin.reportCalibration(false, 0, "Calibration was not running");
+      return;
+    }
+    stopPump();
+    const uint32_t pulses = flow.totalPulses() - calibrationStartPulses;
+    calibrationActive = false;
+    if (pulses == 0 || knownGallons <= 0.0F) {
+      admin.reportCalibration(false, pulses, "No pulses captured; value unchanged");
+      setMessage("CALIBRATION FAILED", "No flow pulses captured");
+      return;
+    }
+    const float ratio = pulses / knownGallons;
+    const bool saved = settings.setCalibration(ratio);
+    admin.reportCalibration(false, pulses, saved ? String("Saved ") + String(ratio, 2) + " pulses/gal" : "Could not save calibration");
+    setMessage(saved ? "CALIBRATION SAVED" : "CALIBRATION FAILED",
+               saved ? String(ratio, 1) + " pulses / gallon" : "Check SD card", 5000);
+  }
 }
 
 void handleTouch() {
   const auto& touch = M5.Touch.getDetail();
   if (!touch.wasPressed()) return;
-
-  if (hasActiveTag() && touch.x >= 240 && touch.y >= 34 && touch.y <= 80) {
-    endActiveTag();
-    return;
-  }
-  if (touch.y >= 108 && touch.y <= 162) {
-    toggleRelay(touch.x < 160 ? 1 : 2);
-  } else if (touch.y >= 174 && touch.y <= 230) {
-    toggleRelay(touch.x < 160 ? 3 : 4);
-  }
+  if (screenState == ScreenState::ACTIVE && touch.y >= 166) endSession("BUTTON");
 }
 
 void printStatus() {
-  Serial.printf(
-      "[STATE] uid=%s session=%lu pending=%lu sensor=%lu tag_total=%llu "
-      "relay_mask=0x%02X sd=%s rfid=%s relay=%s\n",
-      hasActiveTag() ? activeUid : "NONE",
-      static_cast<unsigned long>(sessionPulses),
-      static_cast<unsigned long>(pendingPulses),
-      static_cast<unsigned long>(flow.totalPulses()),
-      static_cast<unsigned long long>(hasActiveTag() ? storage.totalFor(activeUid)
-                                                    : 0),
-      relays.state(), storage.healthy() ? "ok" : "fail",
-      rfidReady ? "ok" : "fail", relayReady ? "ok" : "fail");
+  Serial.printf("[STATE] state=%u uid=%s pulses=%lu gallons=%.3f limit=%.2f relay=0x%02X sd=%s rfid=%s calibration=%.2f\n",
+                static_cast<unsigned>(screenState), sessionActive() ? activeUid : "NONE",
+                static_cast<unsigned long>(sessionPulses), gallonsFor(sessionPulses),
+                activeAllowance, relays.state(), pulseStorage.healthy() ? "ok" : "fail",
+                rfidReady ? "ok" : "fail", settings.pulsesPerGallon());
 }
 
 void processSerialCommand(String command) {
-  command.trim();
-  command.toLowerCase();
-  if (command.length() == 2 && command[0] == 'r' && command[1] >= '1' &&
-      command[1] <= '4') {
-    toggleRelay(command[1] - '0');
-  } else if (command == "off") {
-    if (relays.allOff()) {
-      setStatus("All relays OFF");
-    } else {
-      setStatus("Relay OFF failed");
-    }
-  } else if (command == "end") {
-    endActiveTag();
-  } else if (command == "status") {
-    printStatus();
-  } else if (command.length() > 0) {
-    Serial.println("[HELP] commands: r1 r2 r3 r4 off end status");
-  }
+  command.trim(); command.toLowerCase();
+  if (command == "off") { if (sessionActive()) endSession("SERIAL"); else { stopPump(); setMessage("PUMP OFF", "Safety stop complete"); } }
+  else if (command == "end") endSession("SERIAL");
+  else if (command == "status") printStatus();
+  else if (!command.isEmpty()) Serial.println("[HELP] commands: off end status");
 }
 
 void handleSerial() {
   while (Serial.available()) {
     const char value = static_cast<char>(Serial.read());
-    if (value == '\n' || value == '\r') {
-      if (serialCommand.length() > 0) {
-        processSerialCommand(serialCommand);
-        serialCommand = "";
-      }
-    } else if (serialCommand.length() < 32) {
-      serialCommand += value;
-    }
+    if (value == '\n' || value == '\r') { if (!serialCommand.isEmpty()) { processSerialCommand(serialCommand); serialCommand = ""; } }
+    else if (serialCommand.length() < 32) serialCommand += value;
   }
 }
-
-}  // namespace
+}
 
 void setup() {
   Serial.begin(115200);
   delay(200);
-
   auto config = M5.config();
   M5.begin(config);
   M5.Display.setRotation(1);
@@ -316,42 +333,26 @@ void setup() {
 
   flow.begin(Config::FLOW_PIN);
   lastSensorTotal = flow.totalPulses();
-
-  const bool sdReady = storage.begin();
-  Serial.printf("[SD] ready=%s size_mb=%llu path=%s\n", sdReady ? "yes" : "no",
-                static_cast<unsigned long long>(storage.cardSizeMB()),
-                Config::LOG_PATH);
+  const bool sdReady = pulseStorage.begin();
   const bool membersReady = sdReady && members.begin();
-  Serial.printf("[MEMBERS] ready=%s count=%u path=%s\n",
-                membersReady ? "yes" : "no",
-                static_cast<unsigned>(members.count()), Config::MEMBER_PATH);
+  const bool settingsReady = sdReady && settings.begin();
+  const bool sessionsReady = sdReady && sessions.begin();
 
-  // M5Unified owns Wire1 for internal Tough hardware. External Port A devices
-  // stay on Wire so M5.update() cannot reassign their pins.
-  Wire.end();
-  delay(10);
+  Wire.end(); delay(10);
   Wire.begin(Config::I2C_SDA, Config::I2C_SCL, Config::I2C_FREQUENCY);
-
   relayReady = relays.begin(Wire, Config::RELAY_ADDRESS);
   rfidReady = rfid.begin(Wire, Config::RFID_ADDRESS);
-  Serial.printf("[I2C] relay_0x26=%s rfid_0x28=%s rfid_version=0x%02X\n",
-                devicePresent(Config::RELAY_ADDRESS) ? "yes" : "no",
-                devicePresent(Config::RFID_ADDRESS) ? "yes" : "no",
-                rfid.version());
-
+  if (relayReady) relays.allOff();
   const bool adminReady = admin.begin();
-  Serial.printf("[WEB] ready=%s ssid=%s address=http://%s/\n",
-                adminReady ? "yes" : "no", Config::WIFI_AP_NAME,
-                admin.address().c_str());
 
-  setStatus(sdReady && relayReady && rfidReady && membersReady && adminReady
-                ? String("Setup: ") + admin.address()
-                : "Check red status");
-  Serial.printf("[SMOKE] sd=%s rfid=%s relay=%s flow_pin=%u ready=%u\n",
-                sdReady ? "ok" : "fail", rfidReady ? "ok" : "fail",
-                relayReady ? "ok" : "fail", Config::FLOW_PIN,
-                sdReady && relayReady && rfidReady);
-  Serial.println("[HELP] commands: r1 r2 r3 r4 off end status");
+  Serial.printf("[BOOT] sd=%s members=%s settings=%s sessions=%s relay=%s rfid=%s admin=%s\n",
+                sdReady?"ok":"fail", membersReady?"ok":"fail", settingsReady?"ok":"fail",
+                sessionsReady?"ok":"fail", relayReady?"ok":"fail", rfidReady?"ok":"fail", adminReady?"ok":"fail");
+  Serial.printf("[WEB] ssid=%s address=http://%s/ user=%s\n", Config::WIFI_AP_NAME,
+                admin.address().c_str(), Config::ADMIN_USERNAME);
+  Serial.printf("[I2C] relay_0x26=%s rfid_0x28=%s\n",
+                devicePresent(Config::RELAY_ADDRESS)?"yes":"no", devicePresent(Config::RFID_ADDRESS)?"yes":"no");
+  Serial.println("[HELP] commands: off end status");
   screenDirty = true;
 }
 
@@ -362,19 +363,20 @@ void loop() {
   handleSerial();
   pollFlow();
   pollRfid();
-
-  if (hasActiveTag() && pendingPulses > 0 &&
-      millis() - lastLogMs >= Config::LOG_INTERVAL_MS) {
-    // Retry on the normal interval if the card is unavailable; never hammer
-    // the SPI bus or serial log continuously after a write failure.
-    flushPulses();
+  handleCalibration();
+  if (sessionActive() && pendingPulses > 0 && millis() - lastLogMs >= Config::LOG_INTERVAL_MS) {
+    if (!flushPulses()) endSession("SD_ERROR");
     lastLogMs = millis();
   }
-
-  static uint32_t lastDrawMs = 0;
-  if (screenDirty && millis() - lastDrawMs >= 100) {
-    drawScreen();
-    lastDrawMs = millis();
+  if (sessionActive() && millis() - sessionStartMs >= Config::MAX_SESSION_MS) {
+    endSession("TIMEOUT");
   }
+  if (screenState == ScreenState::MESSAGE && static_cast<int32_t>(millis() - messageUntilMs) >= 0) {
+    summaryGallons = 0.0F;
+    screenState = ScreenState::IDLE;
+    screenDirty = true;
+  }
+  static uint32_t lastDrawMs = 0;
+  if (screenDirty && millis() - lastDrawMs >= 100) { drawScreen(); lastDrawMs = millis(); }
   delay(5);
 }

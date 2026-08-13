@@ -1,26 +1,26 @@
 # Shower Controller Firmware
 
-Hardware-validation MVP for the M5Stack Tough. It verifies the three devices
-currently attached to the prototype:
+Shower-session firmware for the M5Stack Tough and the attached controller
+hardware:
 
 - RFID2 reader on external I2C address `0x28`
 - M5Stack Unit 4Relay on external I2C address `0x26`
 - protected flow-meter pulse signal on GPIO26
 - onboard microSD card for persistent CSV logging
-- local Wi-Fi setup page for UID enrollment
+- secured local Wi-Fi admin dashboard
 
-## MVP behavior
+## Session behavior
 
 1. At boot, all four relays are explicitly commanded OFF.
-2. Scan a tag to make its UID active.
-3. Each falling edge from the flow sensor is attributed to that active UID.
-4. Pulse deltas and lifetime per-tag totals are appended to `/PULSES.CSV`
-   every two seconds while pulses arrive.
-5. Tap **END TAG** to stop attribution.
-6. Tap a relay button to toggle that channel. Leave real loads disconnected
-   during the first bench test.
+2. An enabled, enrolled wristband starts a shower and energizes relay 1.
+3. Flow is displayed in gallons using the saved station calibration.
+4. The shower ends from the touchscreen, its per-user gallon limit (10 gallons
+   by default), or a 20-minute safety timeout.
+5. Every exit path commands all relays OFF and appends a completed record to
+   `/SESSIONS.CSV`; `/PULSES.CSV` remains the raw audit log.
+6. Unknown and disabled wristbands are denied.
 
-## Phone enrollment prototype
+## Admin dashboard
 
 At boot the Tough creates this local setup network:
 
@@ -37,10 +37,20 @@ The network is local and does not provide internet access. To enroll a tag:
 3. Enter a member name and tap **Enroll next tag**.
 4. Tap the tag against the Tough's RFID2 reader.
 
+The initial dashboard login is `admin` / `change-me-shower`. Change it from
+the dashboard before field use. The password is stored on the SD card as a
+salted SHA-256 hash. HTTP Basic authentication protects the controller's local
+admin page.
+
 The association is written to `/MEMBERS.CSV` on the microSD card. The setup
-page lists registered tags and their lifetime pulse totals, and supports rename
-and delete operations. Deleting a registration does not delete its historical
-usage from `/PULSES.CSV`.
+page lists registered tags, completed usage and per-shower limits. It supports
+enrollment, editing, disabling, and deletion. Deleting a registration does not
+delete historical usage.
+
+Calibration starts relay 1 and counts raw pulses while water is dispensed into
+a known-volume container. Enter the measured gallons and stop calibration to
+save the new pulses-per-gallon ratio in `/SETTINGS.CSV`. A 10-minute safety
+timeout stops calibration without changing the saved ratio.
 
 The first prototype uses the tag's factory UID as its identity; it does not
 write user data onto the tag. The JSON endpoints under `/api/` intentionally
@@ -70,9 +80,8 @@ pio device monitor
 The configured USB port and verified upload speed come from the existing
 Tough RFID prototype. Serial commands are available as a backup to touch:
 
-- `r1`, `r2`, `r3`, `r4` — toggle one relay
 - `off` — force all relays off
-- `end` — end the active tag
+- `end` — end the active shower
 - `status` — print current hardware and counter state
 
 ## Current prototype pin lock

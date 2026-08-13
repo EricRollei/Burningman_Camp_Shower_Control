@@ -1,203 +1,193 @@
 #include "AdminServer.h"
 
 #include <WiFi.h>
+#include <mbedtls/base64.h>
 
 #include "Config.h"
 
 namespace {
-
 const char ADMIN_PAGE[] PROGMEM = R"HTML(
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Camp Shower Setup</title>
-<style>
-:root{color-scheme:dark;--bg:#111b1b;--card:#1b2928;--ink:#f4f1e8;--muted:#a9bbb7;--a:#46d6a2;--danger:#ff766d}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px system-ui,sans-serif}
-main{max-width:720px;margin:auto;padding:20px}.eyebrow{color:var(--a);font-weight:700;text-transform:uppercase;letter-spacing:.08em}
-h1{font-size:clamp(30px,8vw,48px);margin:.2em 0}p{color:var(--muted)}.card{background:var(--card);border-radius:16px;padding:18px;margin:16px 0}
-label{display:block;font-weight:700;margin-bottom:8px}input{width:100%;font:inherit;padding:13px;border:1px solid #526663;border-radius:10px;background:#0d1716;color:var(--ink)}
-button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 15px;background:var(--a);color:#092019;cursor:pointer}
-button.secondary{background:#344744;color:var(--ink)}button.danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}
-.actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}.status{padding:12px;border-left:4px solid var(--a);background:#13211f;color:var(--ink)}
-.member{display:grid;grid-template-columns:1fr auto;gap:10px;padding:12px 0;border-top:1px solid #344744}.member:first-child{border-top:0}
-.uid{font:12px ui-monospace,monospace;color:var(--muted)}.total{color:var(--muted);font-size:14px}small{color:var(--muted)}
-</style>
-</head>
-<body><main>
-<div class="eyebrow">Local controller</div><h1>Camp Shower Setup</h1>
-<p>Enroll wristbands against this controller. No internet connection is required.</p>
-<section class="card"><label for="name">Member name</label><input id="name" maxlength="32" autocomplete="off" placeholder="e.g. Dusty River">
-<div class="actions"><button id="arm">Enroll next tag</button><button id="cancel" class="secondary">Cancel</button></div></section>
-<div id="status" class="status">Connecting…</div>
-<section class="card"><h2>Registered tags</h2><div id="members"><small>Loading…</small></div></section>
-</main>
-<script>
-const $=s=>document.querySelector(s), esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function post(path,data={}){const body=new URLSearchParams(data);const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});return r.json()}
-async function refresh(){try{const [s,m]=await Promise.all([fetch('/api/status').then(r=>r.json()),fetch('/api/members').then(r=>r.json())]);
-$('#status').textContent=s.enrollmentPending?`Waiting for ${s.pendingName}'s tag — tap it on the RFID reader.`:`${s.message}${s.lastUid?' · Last tag '+s.lastUid:''}`;
-$('#members').innerHTML=m.members.length?m.members.map(x=>`<div class="member"><div><strong>${esc(x.name)}</strong><div class="uid">${esc(x.uid)}</div><div class="total">${x.pulses} recorded pulses</div></div><div class="actions"><button class="secondary" onclick="renameTag('${encodeURIComponent(x.uid)}')">Rename</button><button class="danger" onclick="removeTag('${encodeURIComponent(x.uid)}')">Delete</button></div></div>`).join(''):'<small>No tags enrolled yet.</small>';
-}catch(e){$('#status').textContent='Controller unavailable — retrying…'}}
-$('#arm').onclick=async()=>{const name=$('#name').value.trim();if(!name){$('#status').textContent='Enter a member name first.';return}await post('/api/enroll',{name});refresh()};
-$('#cancel').onclick=async()=>{await post('/api/cancel');refresh()};
-async function removeTag(uid){if(!confirm('Delete this registration? Usage logs remain intact.'))return;await post('/api/delete',{uid:decodeURIComponent(uid)});refresh()}
-async function renameTag(uid){const name=prompt('New member name');if(!name||!name.trim())return;await post('/api/rename',{uid:decodeURIComponent(uid),name:name.trim()});refresh()}
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Camp Shower Admin</title><style>
+:root{color-scheme:dark;--bg:#071817;--card:#102b28;--card2:#153632;--ink:#fff9ea;--muted:#a8c2bc;--a:#53e0a6;--warn:#ffc85b;--danger:#ff756c}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#16423b 0,var(--bg) 38%);color:var(--ink);font:16px system-ui,sans-serif}main{max-width:900px;margin:auto;padding:24px}
+.eyebrow{color:var(--a);font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.13em}h1{font-size:clamp(34px,8vw,58px);line-height:1;margin:.15em 0}.lede,p,small{color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.card{background:linear-gradient(145deg,var(--card2),var(--card));border:1px solid #245047;border-radius:20px;padding:20px;margin:16px 0;box-shadow:0 14px 40px #0005}
+.stat{font-size:32px;font-weight:800;color:var(--a)}label{display:block;font-weight:700;margin:12px 0 6px}input{width:100%;font:inherit;padding:12px;border:1px solid #52766f;border-radius:10px;background:#071b19;color:var(--ink)}
+button{font:inherit;font-weight:800;border:0;border-radius:11px;padding:12px 15px;background:var(--a);color:#052019;cursor:pointer}button.secondary{background:#31524c;color:var(--ink)}button.danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}button:disabled{opacity:.45}
+.actions{display:flex;gap:9px;margin-top:12px;flex-wrap:wrap}.status{padding:13px;border-left:4px solid var(--a);background:#0d2522;border-radius:7px}.member{padding:15px 0;border-top:1px solid #31534d}.member:first-child{border-top:0}.member-head{display:flex;justify-content:space-between;gap:10px}.uid{font:12px ui-monospace,monospace;color:var(--muted)}.usage{color:var(--a);font-weight:700}.disabled{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;padding:9px 5px;border-bottom:1px solid #31534d}th{color:var(--muted)}
+</style></head><body><main><div class="eyebrow">Local controller · secured</div><h1>Shower Admin</h1><p class="lede">Members, water usage, limits, and station calibration.</p>
+<div id="status" class="status">Connecting…</div><div class="grid"><section class="card"><div class="eyebrow">Station</div><div class="stat"><span id="total">0.00</span> gal</div><small>Total completed usage · <span id="cal">—</span> pulses/gal</small></section>
+<section class="card"><div class="eyebrow">Enroll wristband</div><label for="name">Member name</label><input id="name" maxlength="32" placeholder="e.g. Dusty River"><div class="actions"><button id="arm">Enroll next tag</button><button id="cancel" class="secondary">Cancel</button></div></section></div>
+<section class="card"><h2>Members</h2><div id="members"><small>Loading…</small></div></section>
+<div class="grid"><section class="card"><h2>Flow calibration</h2><p>Place the shower head in a known-volume container, start dispensing, then stop at the measured volume.</p><label for="known">Known volume (gallons)</label><input id="known" type="number" min="0.01" max="100" step="0.01" value="1"><div class="actions"><button id="calStart">Start dispensing</button><button id="calStop" class="secondary">Stop &amp; save</button></div><p id="calStatus"></p></section>
+<section class="card"><h2>Change password</h2><label for="password">New admin password</label><input id="password" type="password" minlength="8" maxlength="64"><div class="actions"><button id="changePassword">Update password</button></div><small>You will be prompted to sign in again.</small></section></div>
+<section class="card"><h2>Recent showers</h2><div style="overflow:auto"><table><thead><tr><th>Member</th><th>Gallons</th><th>Duration</th><th>Ended</th></tr></thead><tbody id="sessions"></tbody></table></div></section>
+</main><script>
+const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function post(path,data={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});const j=await r.json();if(!r.ok)throw Error(j.message||'Request failed');return j}
+async function refresh(){try{const [s,m,h]=await Promise.all(['/api/status','/api/members','/api/sessions'].map(x=>fetch(x).then(r=>r.json())));$('#status').textContent=s.enrollmentPending?`Waiting for ${s.pendingName}'s wristband — tap it now.`:s.message;$('#cal').textContent=Number(s.pulsesPerGallon).toFixed(2);$('#calStatus').textContent=`${s.calibrationMessage} · ${s.calibrationPulses} pulses`;$('#calStart').disabled=s.calibrationActive;$('#calStop').disabled=!s.calibrationActive;
+let total=0;$('#members').innerHTML=m.members.length?m.members.map(x=>{total+=x.gallons;return `<div class="member"><div class="member-head"><div><strong>${esc(x.name)}</strong> ${x.enabled?'':'<span class="disabled">disabled</span>'}<div class="uid">${esc(x.uid)}</div></div><div class="usage">${Number(x.gallons).toFixed(2)} gal · ${x.sessions} showers</div></div><div class="actions"><button class="secondary" onclick="editMember('${x.uid}','${encodeURIComponent(x.name)}',${x.allowance},${x.enabled})">Edit · ${Number(x.allowance).toFixed(1)} gal limit</button><button class="danger" onclick="removeMember('${x.uid}')">Delete</button></div></div>`}).join(''):'<small>No members enrolled.</small>';$('#total').textContent=total.toFixed(2);
+$('#sessions').innerHTML=h.sessions.length?h.sessions.map(x=>`<tr><td>${esc(x.name)}</td><td>${Number(x.gallons).toFixed(2)}</td><td>${Math.round(x.durationMs/1000)}s</td><td>${esc(x.reason)}</td></tr>`).join(''):'<tr><td colspan="4">No completed showers</td></tr>';}catch(e){$('#status').textContent=e.message}}
+$('#arm').onclick=async()=>{try{await post('/api/enroll',{name:$('#name').value.trim()});refresh()}catch(e){alert(e.message)}};$('#cancel').onclick=async()=>{await post('/api/cancel');refresh()};
+async function editMember(uid,name,allowance,enabled){name=decodeURIComponent(name);const nextName=prompt('Member name',name);if(!nextName)return;const nextAllowance=prompt('Per-shower gallon limit',allowance);if(!nextAllowance)return;const nextEnabled=confirm('Allow this wristband to start showers?');try{await post('/api/member',{uid,name:nextName,allowance:nextAllowance,enabled:nextEnabled?'1':'0'});refresh()}catch(e){alert(e.message)}}
+async function removeMember(uid){if(!confirm('Delete this wristband registration? Historical usage remains.'))return;await post('/api/delete',{uid});refresh()}
+$('#calStart').onclick=async()=>{try{await post('/api/calibration/start');refresh()}catch(e){alert(e.message)}};$('#calStop').onclick=async()=>{try{await post('/api/calibration/stop',{gallons:$('#known').value});refresh()}catch(e){alert(e.message)}};
+$('#changePassword').onclick=async()=>{try{await post('/api/password',{password:$('#password').value});alert('Password changed. Sign in again with the new password.');location.reload()}catch(e){alert(e.message)}};
 refresh();setInterval(refresh,1500);
-</script></body></html>
-)HTML";
+</script></body></html>)HTML";
+}
 
-}  // namespace
-
-AdminServer::AdminServer(MemberRegistry& registry, const PulseStorage& storage)
-    : registry_(registry), storage_(storage) {}
+AdminServer::AdminServer(MemberRegistry& registry, const PulseStorage& pulseStorage,
+                         const SessionStorage& sessions, SettingsStore& settings)
+    : registry_(registry), pulseStorage_(pulseStorage), sessions_(sessions), settings_(settings) {}
 
 bool AdminServer::begin() {
   WiFi.mode(WIFI_AP);
   WiFi.setSleep(false);
-  if (!WiFi.softAP(Config::WIFI_AP_NAME, Config::WIFI_AP_PASSWORD)) {
-    return false;
-  }
+  if (!WiFi.softAP(Config::WIFI_AP_NAME, Config::WIFI_AP_PASSWORD)) return false;
+  const char* headers[] = {"Authorization"};
+  server_.collectHeaders(headers, 1);
   configureRoutes();
   server_.begin();
   started_ = true;
   return true;
 }
 
-void AdminServer::handle() {
-  if (started_) server_.handleClient();
-}
+void AdminServer::handle() { if (started_) server_.handleClient(); }
 
 bool AdminServer::onTagScanned(const String& uid) {
   lastUid_ = uid;
   if (!enrollmentPending_) return false;
-
-  const String enrolledName = pendingName_;
-  const bool saved = registry_.upsert(uid.c_str(), enrolledName);
+  const String name = pendingName_;
+  const bool saved = registry_.upsert(uid.c_str(), name);
   enrollmentPending_ = false;
   pendingName_ = "";
-  lastMessage_ = saved ? enrolledName + " enrolled" : "Enrollment save failed";
+  lastMessage_ = saved ? name + " enrolled" : "Enrollment save failed";
   return true;
 }
 
-String AdminServer::address() const {
-  return started_ ? WiFi.softAPIP().toString() : String("offline");
+String AdminServer::address() const { return started_ ? WiFi.softAPIP().toString() : String("offline"); }
+
+bool AdminServer::takeCalibrationStartRequest() {
+  const bool requested = calibrationStartRequested_;
+  calibrationStartRequested_ = false;
+  return requested;
+}
+
+bool AdminServer::takeCalibrationStopRequest(float& knownGallons) {
+  if (!calibrationStopRequested_) return false;
+  calibrationStopRequested_ = false;
+  knownGallons = calibrationKnownGallons_;
+  return true;
+}
+
+void AdminServer::reportCalibration(bool active, uint32_t pulses, const String& message) {
+  calibrationActive_ = active;
+  calibrationPulses_ = pulses;
+  calibrationMessage_ = message;
+}
+
+bool AdminServer::authorize() {
+  String header = server_.header("Authorization");
+  if (header.startsWith("Basic ")) {
+    header.remove(0, 6);
+    unsigned char decoded[128] = {0};
+    size_t decodedLength = 0;
+    if (mbedtls_base64_decode(decoded, sizeof(decoded) - 1, &decodedLength,
+                              reinterpret_cast<const unsigned char*>(header.c_str()),
+                              header.length()) == 0) {
+      decoded[decodedLength] = 0;
+      const String credentials(reinterpret_cast<char*>(decoded));
+      const int colon = credentials.indexOf(':');
+      if (colon > 0 && credentials.substring(0, colon) == Config::ADMIN_USERNAME &&
+          settings_.verifyPassword(credentials.substring(colon + 1))) return true;
+    }
+  }
+  server_.sendHeader("WWW-Authenticate", "Basic realm=\"Camp Shower Admin\"");
+  server_.send(401, "application/json", "{\"ok\":false,\"message\":\"Authentication required\"}");
+  return false;
 }
 
 void AdminServer::configureRoutes() {
-  server_.on("/", HTTP_GET, [this]() {
-    server_.send_P(200, "text/html", ADMIN_PAGE);
-  });
-  server_.on("/api/status", HTTP_GET, [this]() { sendStatus(); });
-  server_.on("/api/members", HTTP_GET, [this]() { sendMembers(); });
-  server_.on("/api/enroll", HTTP_POST, [this]() { armEnrollment(); });
-  server_.on("/api/cancel", HTTP_POST, [this]() { cancelEnrollment(); });
-  server_.on("/api/rename", HTTP_POST, [this]() { renameMember(); });
-  server_.on("/api/delete", HTTP_POST, [this]() { deleteMember(); });
-  server_.onNotFound([this]() {
-    if (server_.uri().startsWith("/api/")) {
-      sendJsonMessage(404, false, "Not found");
-    } else {
-      server_.sendHeader("Location", "/", true);
-      server_.send(302, "text/plain", "");
+  server_.on("/", HTTP_GET, [this]() { if (authorize()) server_.send_P(200, "text/html", ADMIN_PAGE); });
+  server_.on("/api/status", HTTP_GET, [this]() { if (authorize()) sendStatus(); });
+  server_.on("/api/members", HTTP_GET, [this]() { if (authorize()) sendMembers(); });
+  server_.on("/api/sessions", HTTP_GET, [this]() {
+    if (!authorize()) return;
+    String body = "{\"sessions\":[";
+    for (size_t i = 0; i < sessions_.recentCount(); ++i) {
+      if (i) body += ',';
+      const auto& record = sessions_.recentAt(i);
+      const char* name = registry_.nameFor(record.uid);
+      body += "{\"uid\":\"" + jsonEscape(record.uid) + "\",\"name\":\"";
+      body += jsonEscape(name ? name : "Deleted member");
+      body += "\",\"gallons\":" + String(record.gallons, 4);
+      body += ",\"durationMs\":" + String(record.endMs - record.startMs);
+      body += ",\"reason\":\"" + jsonEscape(record.reason) + "\"}";
     }
+    body += "]}";
+    server_.send(200, "application/json", body);
   });
+  server_.on("/api/enroll", HTTP_POST, [this]() { if (authorize()) armEnrollment(); });
+  server_.on("/api/cancel", HTTP_POST, [this]() { if (authorize()) cancelEnrollment(); });
+  server_.on("/api/member", HTTP_POST, [this]() { if (authorize()) updateMember(); });
+  server_.on("/api/rename", HTTP_POST, [this]() { if (authorize()) renameMember(); });
+  server_.on("/api/delete", HTTP_POST, [this]() { if (authorize()) deleteMember(); });
+  server_.on("/api/password", HTTP_POST, [this]() { if (authorize()) changePassword(); });
+  server_.on("/api/calibration/start", HTTP_POST, [this]() { if (authorize()) startCalibration(); });
+  server_.on("/api/calibration/stop", HTTP_POST, [this]() { if (authorize()) stopCalibration(); });
+  server_.onNotFound([this]() { if (authorize()) sendJsonMessage(404, false, "Not found"); });
 }
 
 void AdminServer::sendStatus() {
-  String body = "{\"station\":\"";
-  body += Config::STATION_NAME;
-  body += "\",\"ip\":\"" + address() + "\",\"enrollmentPending\":";
-  body += enrollmentPending_ ? "true" : "false";
-  body += ",\"pendingName\":\"" + jsonEscape(pendingName_) + "\"";
-  body += ",\"lastUid\":\"" + jsonEscape(lastUid_) + "\"";
-  body += ",\"message\":\"" + jsonEscape(lastMessage_) + "\"}";
+  String body = "{\"station\":\"" + String(Config::STATION_NAME) + "\",\"ip\":\"" + address();
+  body += "\",\"enrollmentPending\":" + String(enrollmentPending_ ? "true" : "false");
+  body += ",\"pendingName\":\"" + jsonEscape(pendingName_) + "\",\"lastUid\":\"" + jsonEscape(lastUid_);
+  body += "\",\"message\":\"" + jsonEscape(lastMessage_) + "\",\"pulsesPerGallon\":" + String(settings_.pulsesPerGallon(), 4);
+  body += ",\"calibrationActive\":" + String(calibrationActive_ ? "true" : "false");
+  body += ",\"calibrationPulses\":" + String(calibrationPulses_);
+  body += ",\"calibrationMessage\":\"" + jsonEscape(calibrationMessage_) + "\"}";
   server_.send(200, "application/json", body);
 }
 
 void AdminServer::sendMembers() {
   String body = "{\"members\":[";
   for (size_t i = 0; i < registry_.count(); ++i) {
-    if (i > 0) body += ',';
+    if (i) body += ',';
     const char* uid = registry_.uidAt(i);
-    body += "{\"uid\":\"" + jsonEscape(uid) + "\",\"name\":\"";
-    body += jsonEscape(registry_.nameAt(i));
-    body += "\",\"pulses\":";
-    body += String(static_cast<unsigned long long>(storage_.totalFor(uid)));
-    body += '}';
+    body += "{\"uid\":\"" + jsonEscape(uid) + "\",\"name\":\"" + jsonEscape(registry_.nameAt(i));
+    body += "\",\"allowance\":" + String(registry_.allowanceAt(i), 3);
+    body += ",\"enabled\":" + String(registry_.enabledAt(i) ? "true" : "false");
+    body += ",\"gallons\":" + String(sessions_.gallonsFor(uid), 4);
+    body += ",\"sessions\":" + String(sessions_.sessionsFor(uid));
+    body += ",\"pulses\":" + String(static_cast<unsigned long long>(pulseStorage_.totalFor(uid))) + '}';
   }
   body += "]}";
   server_.send(200, "application/json", body);
 }
 
 void AdminServer::armEnrollment() {
-  String name = server_.arg("name");
-  name.trim();
-  if (!registry_.healthy()) {
-    sendJsonMessage(503, false, "Member storage unavailable");
-    return;
-  }
-  if (name.isEmpty() || name.length() > 32) {
-    sendJsonMessage(400, false, "Name must be 1-32 characters");
-    return;
-  }
-  pendingName_ = name;
-  enrollmentPending_ = true;
-  lastMessage_ = "Waiting for tag";
-  sendJsonMessage(200, true, "Tap tag on reader");
+  String name = server_.arg("name"); name.trim();
+  if (!registry_.healthy()) return sendJsonMessage(503, false, "Member storage unavailable");
+  if (name.isEmpty() || name.length() > 32) return sendJsonMessage(400, false, "Name must be 1-32 characters");
+  pendingName_ = name; enrollmentPending_ = true; lastMessage_ = "Waiting for wristband";
+  sendJsonMessage(200, true, "Tap wristband on reader");
 }
+void AdminServer::cancelEnrollment() { enrollmentPending_ = false; pendingName_ = ""; lastMessage_ = "Enrollment cancelled"; sendJsonMessage(200, true, lastMessage_); }
+void AdminServer::renameMember() { server_.sendHeader("Location", "/api/member"); updateMember(); }
+void AdminServer::updateMember() {
+  const String uid = server_.arg("uid"), name = server_.arg("name");
+  const float allowance = server_.arg("allowance").toFloat();
+  const bool enabled = server_.arg("enabled") == "1";
+  if (!registry_.update(uid.c_str(), name, allowance, enabled)) return sendJsonMessage(400, false, "Member update failed");
+  lastMessage_ = "Member updated"; sendJsonMessage(200, true, lastMessage_);
+}
+void AdminServer::deleteMember() { if (!registry_.remove(server_.arg("uid").c_str())) return sendJsonMessage(404, false, "Registration not found"); lastMessage_ = "Registration deleted"; sendJsonMessage(200, true, lastMessage_); }
+void AdminServer::changePassword() { if (!settings_.setPassword(server_.arg("password"))) return sendJsonMessage(400, false, "Password must be 8-64 characters"); sendJsonMessage(200, true, "Password changed"); }
+void AdminServer::startCalibration() { calibrationStartRequested_ = true; calibrationMessage_ = "Starting…"; sendJsonMessage(200, true, "Calibration requested"); }
+void AdminServer::stopCalibration() { const float gallons = server_.arg("gallons").toFloat(); if (gallons <= 0.0F) return sendJsonMessage(400, false, "Enter a known volume"); calibrationKnownGallons_ = gallons; calibrationStopRequested_ = true; sendJsonMessage(200, true, "Stop requested"); }
 
-void AdminServer::cancelEnrollment() {
-  enrollmentPending_ = false;
-  pendingName_ = "";
-  lastMessage_ = "Enrollment cancelled";
-  sendJsonMessage(200, true, lastMessage_);
-}
-
-void AdminServer::renameMember() {
-  const String uid = server_.arg("uid");
-  const String name = server_.arg("name");
-  if (registry_.nameFor(uid.c_str()) == nullptr) {
-    sendJsonMessage(404, false, "Registration not found");
-    return;
-  }
-  if (!registry_.upsert(uid.c_str(), name)) {
-    sendJsonMessage(400, false, "Rename failed");
-    return;
-  }
-  lastMessage_ = "Member renamed";
-  sendJsonMessage(200, true, lastMessage_);
-}
-
-void AdminServer::deleteMember() {
-  const String uid = server_.arg("uid");
-  if (!registry_.remove(uid.c_str())) {
-    sendJsonMessage(404, false, "Registration not found");
-    return;
-  }
-  lastMessage_ = "Registration deleted";
-  sendJsonMessage(200, true, lastMessage_);
-}
-
-void AdminServer::sendJsonMessage(int code, bool ok, const String& message) {
-  String body = String("{\"ok\":") + (ok ? "true" : "false") +
-                ",\"message\":\"" + jsonEscape(message) + "\"}";
-  server_.send(code, "application/json", body);
-}
-
-String AdminServer::jsonEscape(const String& value) {
-  String escaped;
-  escaped.reserve(value.length() + 8);
-  for (size_t i = 0; i < value.length(); ++i) {
-    const char c = value[i];
-    if (c == '"' || c == '\\') escaped += '\\';
-    if (c == '\n') {
-      escaped += "\\n";
-    } else if (c >= 32) {
-      escaped += c;
-    }
-  }
-  return escaped;
-}
+void AdminServer::sendJsonMessage(int code, bool ok, const String& message) { server_.send(code, "application/json", String("{\"ok\":") + (ok ? "true" : "false") + ",\"message\":\"" + jsonEscape(message) + "\"}"); }
+String AdminServer::jsonEscape(const String& value) { String escaped; escaped.reserve(value.length() + 8); for (size_t i=0;i<value.length();++i){const char c=value[i]; if(c=='"'||c=='\\')escaped+='\\'; if(c=='\n')escaped+="\\n"; else if(c>=32)escaped+=c;} return escaped; }
