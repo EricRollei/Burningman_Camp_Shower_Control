@@ -3,8 +3,10 @@
 Shower-session firmware for the M5Stack Tough and the attached controller
 hardware:
 
-- RFID2 reader on external I2C address `0x28`
-- M5Stack Unit 4Relay on external I2C address `0x26`
+- M5Stack PaHUB v2.1 multiplexer on external I2C address `0x70`
+- RFID2 reader on a PaHUB port at I2C address `0x28`
+- M5Stack Unit 4Relay on a PaHUB port at I2C address `0x26`
+- M5NanoC6 door-display controller with a locally connected SH1107 OLED
 - protected flow-meter pulse signal on GPIO26
 - onboard microSD card for persistent CSV logging
 - secured local Wi-Fi admin dashboard
@@ -12,13 +14,29 @@ hardware:
 ## Session behavior
 
 1. At boot, all four relays are explicitly commanded OFF.
-2. An enabled, enrolled wristband starts a shower and energizes relay 1.
-3. Flow is displayed in gallons using the saved station calibration.
-4. The shower ends from the touchscreen, its per-user gallon limit (10 gallons
+2. An enabled, enrolled wristband opens a shower session with relay 1 off.
+3. The momentary button on GPIO14 toggles the pump during that session; button
+   presses are ignored when no member is authenticated.
+4. Flow is displayed in gallons using the saved station calibration.
+5. The shower ends from the touchscreen, its per-user gallon limit (10 gallons
    by default), or a 20-minute safety timeout.
-5. Every exit path commands all relays OFF and appends a completed record to
+6. Every exit path commands all relays OFF and appends a completed record to
    `/SESSIONS.CSV`; `/PULSES.CSV` remains the raw audit log.
-6. Unknown and disabled wristbands are denied.
+7. Unknown and disabled wristbands are denied.
+
+The NanoC6 and external OLED form the public availability sign. The Nano joins
+the Tough's local Wi-Fi access point and requests status twice per second. While
+available, the OLED uses an inverted bright background and rotates through
+short messages such as `HEY STINKY`, `SHOWER TIME`, and `SCRUB A DUB`. During
+an authorized shower session it displays `IN USE`, even when the pump is
+paused. It fails safe to `OFFLINE` after three seconds without a valid reply.
+The Tough's built-in touchscreen keeps the operational UI shown to the person
+using the controller.
+
+Both downstream I2C devices are discovered by address at boot, so their
+PaHUB ports may be rearranged without rebuilding the firmware. Missing devices
+are retried every five seconds while the shower is idle, which also supports
+reconnecting a loose Grove cable without rebooting.
 
 ## Admin dashboard
 
@@ -91,8 +109,23 @@ Tough RFID prototype. Serial commands are available as a backup to touch:
 | External I2C SDA | GPIO32 |
 | External I2C SCL | GPIO33 |
 | Flow pulse input | GPIO26 |
+| Pump toggle button | GPIO14 to GND (internal pull-up) |
 | microSD CS | GPIO4 |
 | microSD SCK/MISO/MOSI | GPIO18 / GPIO38 / GPIO23 |
 
 GPIO26 uses its internal pull-up as a backup. Keep the already-tested external
 flow-signal protection harness in place; do not connect a 5 V pulse directly.
+
+The PaHUB channel numbers are intentionally not pinned in configuration; the
+Tough firmware locates relay `0x26` and RFID2 `0x28` at runtime. The SH1107 is
+connected directly to the NanoC6 on SDA GPIO2 and SCL GPIO1.
+
+### Bench-power note
+
+The Tough explicitly enables its external 5 V rail before probing the PaHUB.
+Its AXP192 power-management protection may still withhold that rail when the
+controller is powered only from USB and has an empty battery, preventing the
+Mac's USB port from being overloaded by the PaHUB, relay coils, and RFID2. For
+a complete bench test, power the Tough from 6–24 V through PWR+485
+or power the I2C peripherals from a suitable independent 5 V supply with a
+shared ground. Do not back-feed the computer's USB 5 V rail.

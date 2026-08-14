@@ -28,9 +28,11 @@ enum : uint8_t {
 };
 }  // namespace
 
-bool RfidReader::begin(TwoWire& wire, uint8_t address) {
+bool RfidReader::begin(TwoWire& wire, uint8_t address, I2cHub* hub, int8_t channel) {
   wire_ = &wire;
   address_ = address;
+  hub_ = hub;
+  channel_ = channel;
   initializeChip();
   return healthy();
 }
@@ -93,6 +95,7 @@ bool RfidReader::healthy() const {
 uint8_t RfidReader::version() { return readRegister(VersionReg); }
 
 uint8_t RfidReader::readRegister(uint8_t reg) {
+  if (hub_ != nullptr && !hub_->select(channel_)) return 0xFF;
   wire_->beginTransmission(address_);
   wire_->write(reg);
   wire_->endTransmission(false);
@@ -101,6 +104,7 @@ uint8_t RfidReader::readRegister(uint8_t reg) {
 }
 
 void RfidReader::writeRegister(uint8_t reg, uint8_t value) {
+  if (hub_ != nullptr && !hub_->select(channel_)) return;
   wire_->beginTransmission(address_);
   wire_->write(reg);
   wire_->write(value);
@@ -167,4 +171,3 @@ int RfidReader::transceive(const uint8_t* send, int sendLen, uint8_t* back,
   if (rxLastBits != nullptr) *rxLastBits = readRegister(ControlReg) & 0x07;
   return count;
 }
-

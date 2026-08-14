@@ -1,6 +1,7 @@
 #include "AdminServer.h"
 
 #include <WiFi.h>
+#include <SD.h>
 #include <mbedtls/base64.h>
 
 #include "Config.h"
@@ -23,11 +24,13 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;p
 <section class="card"><h2>Members</h2><div id="members"><small>Loading…</small></div></section>
 <div class="grid"><section class="card"><h2>Flow calibration</h2><p>Place the shower head in a known-volume container, start dispensing, then stop at the measured volume.</p><label for="known">Known volume (gallons)</label><input id="known" type="number" min="0.01" max="100" step="0.01" value="1"><div class="actions"><button id="calStart">Start dispensing</button><button id="calStop" class="secondary">Stop &amp; save</button></div><p id="calStatus"></p></section>
 <section class="card"><h2>Change password</h2><label for="password">New admin password</label><input id="password" type="password" minlength="8" maxlength="64"><div class="actions"><button id="changePassword">Update password</button></div><small>You will be prompted to sign in again.</small></section></div>
+<section class="card"><h2>Shower speaker</h2><p id="audioStatus">Connecting…</p><div class="actions"><button id="tone">Test tone</button><button id="play">Play song</button><button id="stopAudio" class="secondary">Stop</button></div><label for="audioFile">Replace song (44.1 kHz stereo signed 16-bit PCM)</label><input id="audioFile" type="file"><div class="actions"><button id="uploadAudio" class="secondary">Upload audio</button></div><small>The Tough automatically searches for and reconnects to a speaker whose Bluetooth name contains “Select 4 Go”.</small></section>
 <section class="card"><h2>Recent showers</h2><div style="overflow:auto"><table><thead><tr><th>Member</th><th>Gallons</th><th>Duration</th><th>Ended</th></tr></thead><tbody id="sessions"></tbody></table></div></section>
 </main><script>
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function post(path,data={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});const j=await r.json();if(!r.ok)throw Error(j.message||'Request failed');return j}
 async function refresh(){try{const [s,m,h]=await Promise.all(['/api/status','/api/members','/api/sessions'].map(x=>fetch(x).then(r=>r.json())));$('#status').textContent=s.enrollmentPending?`Waiting for ${s.pendingName}'s wristband — tap it now.`:s.message;$('#cal').textContent=Number(s.pulsesPerGallon).toFixed(2);$('#calStatus').textContent=`${s.calibrationMessage} · ${s.calibrationPulses} pulses`;$('#calStart').disabled=s.calibrationActive;$('#calStop').disabled=!s.calibrationActive;
+$('#audioStatus').textContent=`Speaker: ${s.speaker} · ${s.audioPlayback} · song ${s.audioFile?'ready':'not uploaded'}`;$('#tone').disabled=s.speaker!=='connected';$('#play').disabled=s.speaker!=='connected'||!s.audioFile;
 let total=0;$('#members').innerHTML=m.members.length?m.members.map(x=>{total+=x.gallons;return `<div class="member"><div class="member-head"><div><strong>${esc(x.name)}</strong> ${x.enabled?'':'<span class="disabled">disabled</span>'}<div class="uid">${esc(x.uid)}</div></div><div class="usage">${Number(x.gallons).toFixed(2)} gal · ${x.sessions} showers</div></div><div class="actions"><button class="secondary" onclick="editMember('${x.uid}','${encodeURIComponent(x.name)}',${x.allowance},${x.enabled})">Edit · ${Number(x.allowance).toFixed(1)} gal limit</button><button class="danger" onclick="removeMember('${x.uid}')">Delete</button></div></div>`}).join(''):'<small>No members enrolled.</small>';$('#total').textContent=total.toFixed(2);
 $('#sessions').innerHTML=h.sessions.length?h.sessions.map(x=>`<tr><td>${esc(x.name)}</td><td>${Number(x.gallons).toFixed(2)}</td><td>${Math.round(x.durationMs/1000)}s</td><td>${esc(x.reason)}</td></tr>`).join(''):'<tr><td colspan="4">No completed showers</td></tr>';}catch(e){$('#status').textContent=e.message}}
 $('#arm').onclick=async()=>{try{await post('/api/enroll',{name:$('#name').value.trim()});refresh()}catch(e){alert(e.message)}};$('#cancel').onclick=async()=>{await post('/api/cancel');refresh()};
@@ -35,13 +38,16 @@ async function editMember(uid,name,allowance,enabled){name=decodeURIComponent(na
 async function removeMember(uid){if(!confirm('Delete this wristband registration? Historical usage remains.'))return;await post('/api/delete',{uid});refresh()}
 $('#calStart').onclick=async()=>{try{await post('/api/calibration/start');refresh()}catch(e){alert(e.message)}};$('#calStop').onclick=async()=>{try{await post('/api/calibration/stop',{gallons:$('#known').value});refresh()}catch(e){alert(e.message)}};
 $('#changePassword').onclick=async()=>{try{await post('/api/password',{password:$('#password').value});alert('Password changed. Sign in again with the new password.');location.reload()}catch(e){alert(e.message)}};
+$('#tone').onclick=async()=>{try{await post('/api/audio/tone');refresh()}catch(e){alert(e.message)}};$('#play').onclick=async()=>{try{await post('/api/audio/play');refresh()}catch(e){alert(e.message)}};$('#stopAudio').onclick=async()=>{await post('/api/audio/stop');refresh()};$('#uploadAudio').onclick=async()=>{const f=$('#audioFile').files[0];if(!f)return alert('Choose a PCM file first');const body=new FormData();body.append('audio',f);$('#audioStatus').textContent=`Uploading ${f.name}…`;const r=await fetch('/api/audio/upload',{method:'POST',body});const j=await r.json();if(!r.ok)return alert(j.message||'Upload failed');refresh()};
 refresh();setInterval(refresh,1500);
 </script></body></html>)HTML";
 }
 
 AdminServer::AdminServer(MemberRegistry& registry, const PulseStorage& pulseStorage,
-                         const SessionStorage& sessions, SettingsStore& settings)
-    : registry_(registry), pulseStorage_(pulseStorage), sessions_(sessions), settings_(settings) {}
+                         const SessionStorage& sessions, SettingsStore& settings,
+                         SpeakerAudio& speakerAudio)
+    : registry_(registry), pulseStorage_(pulseStorage), sessions_(sessions),
+      settings_(settings), speakerAudio_(speakerAudio) {}
 
 bool AdminServer::begin() {
   WiFi.mode(WIFI_AP);
@@ -138,6 +144,31 @@ void AdminServer::configureRoutes() {
   server_.on("/api/password", HTTP_POST, [this]() { if (authorize()) changePassword(); });
   server_.on("/api/calibration/start", HTTP_POST, [this]() { if (authorize()) startCalibration(); });
   server_.on("/api/calibration/stop", HTTP_POST, [this]() { if (authorize()) stopCalibration(); });
+  server_.on("/api/audio/tone", HTTP_POST, [this]() {
+    if (!authorize()) return;
+    sendJsonMessage(speakerAudio_.playTestTone() ? 200 : 409,
+                    speakerAudio_.connected(), speakerAudio_.connected() ? "Test tone started" : "Speaker not connected");
+  });
+  server_.on("/api/audio/play", HTTP_POST, [this]() {
+    if (!authorize()) return;
+    const bool started = speakerAudio_.playSong();
+    sendJsonMessage(started ? 200 : 409, started,
+                    started ? "Song started" : "Connect speaker and upload audio first");
+  });
+  server_.on("/api/audio/stop", HTTP_POST, [this]() {
+    if (!authorize()) return;
+    speakerAudio_.stop();
+    sendJsonMessage(200, true, "Audio stopped");
+  });
+  server_.on("/api/audio/upload", HTTP_POST,
+             [this]() {
+               if (!audioUploadAuthorized_) return;
+               const bool ok = !audioUploadFailed_ && audioUploadBytes_ > 0;
+               sendJsonMessage(ok ? 200 : 500, ok,
+                               ok ? String("Uploaded ") + audioUploadBytes_ + " bytes" : "Audio upload failed");
+               audioUploadAuthorized_ = false;
+             },
+             [this]() { handleAudioUpload(); });
   server_.onNotFound([this]() { if (authorize()) sendJsonMessage(404, false, "Not found"); });
 }
 
@@ -148,7 +179,10 @@ void AdminServer::sendStatus() {
   body += "\",\"message\":\"" + jsonEscape(lastMessage_) + "\",\"pulsesPerGallon\":" + String(settings_.pulsesPerGallon(), 4);
   body += ",\"calibrationActive\":" + String(calibrationActive_ ? "true" : "false");
   body += ",\"calibrationPulses\":" + String(calibrationPulses_);
-  body += ",\"calibrationMessage\":\"" + jsonEscape(calibrationMessage_) + "\"}";
+  body += ",\"calibrationMessage\":\"" + jsonEscape(calibrationMessage_) + "\"";
+  body += ",\"speaker\":\"" + String(speakerAudio_.connectionLabel()) + "\"";
+  body += ",\"audioPlayback\":\"" + String(speakerAudio_.playbackLabel()) + "\"";
+  body += ",\"audioFile\":" + String(speakerAudio_.fileAvailable() ? "true" : "false") + "}";
   server_.send(200, "application/json", body);
 }
 
@@ -188,6 +222,32 @@ void AdminServer::deleteMember() { if (!registry_.remove(server_.arg("uid").c_st
 void AdminServer::changePassword() { if (!settings_.setPassword(server_.arg("password"))) return sendJsonMessage(400, false, "Password must be 8-64 characters"); sendJsonMessage(200, true, "Password changed"); }
 void AdminServer::startCalibration() { calibrationStartRequested_ = true; calibrationMessage_ = "Starting…"; sendJsonMessage(200, true, "Calibration requested"); }
 void AdminServer::stopCalibration() { const float gallons = server_.arg("gallons").toFloat(); if (gallons <= 0.0F) return sendJsonMessage(400, false, "Enter a known volume"); calibrationKnownGallons_ = gallons; calibrationStopRequested_ = true; sendJsonMessage(200, true, "Stop requested"); }
+
+void AdminServer::handleAudioUpload() {
+  HTTPUpload& upload = server_.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    audioUploadAuthorized_ = authorize();
+    audioUploadFailed_ = !audioUploadAuthorized_;
+    audioUploadBytes_ = 0;
+    if (!audioUploadAuthorized_) return;
+    speakerAudio_.stop();
+    SD.remove(Config::AUDIO_PATH);
+    audioUploadFile_ = SD.open(Config::AUDIO_PATH, FILE_WRITE);
+    audioUploadFailed_ = !audioUploadFile_;
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (!audioUploadAuthorized_ || audioUploadFailed_) return;
+    const size_t written = audioUploadFile_.write(upload.buf, upload.currentSize);
+    audioUploadBytes_ += written;
+    if (written != upload.currentSize) audioUploadFailed_ = true;
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (audioUploadFile_) audioUploadFile_.close();
+    if (audioUploadFailed_) SD.remove(Config::AUDIO_PATH);
+  } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    if (audioUploadFile_) audioUploadFile_.close();
+    SD.remove(Config::AUDIO_PATH);
+    audioUploadFailed_ = true;
+  }
+}
 
 void AdminServer::sendJsonMessage(int code, bool ok, const String& message) { server_.send(code, "application/json", String("{\"ok\":") + (ok ? "true" : "false") + ",\"message\":\"" + jsonEscape(message) + "\"}"); }
 String AdminServer::jsonEscape(const String& value) { String escaped; escaped.reserve(value.length() + 8); for (size_t i=0;i<value.length();++i){const char c=value[i]; if(c=='"'||c=='\\')escaped+='\\'; if(c=='\n')escaped+="\\n"; else if(c>=32)escaped+=c;} return escaped; }

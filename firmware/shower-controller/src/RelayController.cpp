@@ -10,11 +10,14 @@ uint8_t channelMask(uint8_t channel) {
 }
 }  // namespace
 
-bool RelayController::begin(TwoWire& wire, uint8_t address) {
+bool RelayController::begin(TwoWire& wire, uint8_t address, I2cHub* hub, int8_t channel) {
   wire_ = &wire;
   address_ = address;
+  hub_ = hub;
+  channel_ = channel;
   state_ = 0;
 
+  if (hub_ != nullptr && !hub_->select(channel_)) return false;
   wire_->beginTransmission(address_);
   healthy_ = wire_->endTransmission() == 0;
   if (!healthy_) return false;
@@ -57,9 +60,9 @@ bool RelayController::isOn(uint8_t channel) const {
 }
 
 bool RelayController::writeRegister(uint8_t reg, uint8_t value) {
+  if (hub_ != nullptr && !hub_->select(channel_)) return false;
   wire_->beginTransmission(address_);
   wire_->write(reg);
   wire_->write(value);
   return wire_->endTransmission() == 0;
 }
-

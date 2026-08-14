@@ -2,10 +2,11 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include "I2cHub.h"
 
 class RelayController {
  public:
-  bool begin(TwoWire& wire, uint8_t address);
+  bool begin(TwoWire& wire, uint8_t address, I2cHub* hub = nullptr, int8_t channel = -1);
   bool set(uint8_t channel, bool on);
   bool toggle(uint8_t channel);
   bool allOff();
@@ -20,6 +21,7 @@ class RelayController {
   TwoWire* wire_ = nullptr;
   uint8_t address_ = 0;
   uint8_t state_ = 0;
+  I2cHub* hub_ = nullptr;
+  int8_t channel_ = -1;
   bool healthy_ = false;
 };
-

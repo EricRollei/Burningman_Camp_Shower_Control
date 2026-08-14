@@ -7,11 +7,13 @@
 #include "PulseStorage.h"
 #include "SessionStorage.h"
 #include "SettingsStore.h"
+#include "SpeakerAudio.h"
 
 class AdminServer {
  public:
   AdminServer(MemberRegistry& registry, const PulseStorage& pulseStorage,
-              const SessionStorage& sessions, SettingsStore& settings);
+              const SessionStorage& sessions, SettingsStore& settings,
+              SpeakerAudio& speakerAudio);
 
   bool begin();
   void handle();
@@ -36,6 +38,7 @@ class AdminServer {
   void changePassword();
   void startCalibration();
   void stopCalibration();
+  void handleAudioUpload();
   bool authorize();
   void sendJsonMessage(int code, bool ok, const String& message);
   static String jsonEscape(const String& value);
@@ -45,6 +48,7 @@ class AdminServer {
   const PulseStorage& pulseStorage_;
   const SessionStorage& sessions_;
   SettingsStore& settings_;
+  SpeakerAudio& speakerAudio_;
   bool started_ = false;
   bool enrollmentPending_ = false;
   String pendingName_;
@@ -56,4 +60,8 @@ class AdminServer {
   float calibrationKnownGallons_ = 0.0F;
   uint32_t calibrationPulses_ = 0;
   String calibrationMessage_ = "Ready to calibrate";
+  File audioUploadFile_;
+  bool audioUploadAuthorized_ = false;
+  bool audioUploadFailed_ = false;
+  size_t audioUploadBytes_ = 0;
 };

@@ -2,10 +2,11 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include "I2cHub.h"
 
 class RfidReader {
  public:
-  bool begin(TwoWire& wire, uint8_t address);
+  bool begin(TwoWire& wire, uint8_t address, I2cHub* hub = nullptr, int8_t channel = -1);
   int readUid(uint8_t* uid, int uidMax);
   void haltTag();
 
@@ -26,5 +27,6 @@ class RfidReader {
   TwoWire* wire_ = nullptr;
   uint8_t address_ = 0;
   int lastError_ = 0;
+  I2cHub* hub_ = nullptr;
+  int8_t channel_ = -1;
 };
-

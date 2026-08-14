@@ -1,15 +1,18 @@
 #include <M5Unified.h>
 #include <Wire.h>
+#include <WiFiUdp.h>
 
 #include "AdminServer.h"
 #include "Config.h"
 #include "FlowMeter.h"
+#include "I2cHub.h"
 #include "MemberRegistry.h"
 #include "PulseStorage.h"
 #include "RelayController.h"
 #include "RfidReader.h"
 #include "SessionStorage.h"
 #include "SettingsStore.h"
+#include "SpeakerAudio.h"
 
 namespace {
 enum class ScreenState { IDLE, ACTIVE, MESSAGE, CALIBRATION };
@@ -19,9 +22,12 @@ PulseStorage pulseStorage;
 MemberRegistry members;
 SessionStorage sessions;
 SettingsStore settings;
-AdminServer admin(members, pulseStorage, sessions, settings);
+SpeakerAudio speakerAudio;
+AdminServer admin(members, pulseStorage, sessions, settings, speakerAudio);
 RelayController relays;
 RfidReader rfid;
+I2cHub i2cHub;
+WiFiUDP doorDisplayUdp;
 
 ScreenState screenState = ScreenState::IDLE;
 char activeUid[21] = {0};
@@ -37,17 +43,66 @@ uint32_t sessionStartMs = 0;
 uint32_t messageUntilMs = 0;
 uint32_t calibrationStartPulses = 0;
 uint32_t calibrationStartMs = 0;
+uint32_t lastBusProbeMs = 0;
+uint32_t buttonChangedMs = 0;
 float activeAllowance = 0.0F;
 float summaryGallons = 0.0F;
 bool rfidReady = false;
 bool relayReady = false;
+bool hubReady = false;
+uint8_t hubAddress = Config::PAHUB_ADDRESS;
+int8_t relayChannel = -1;
+int8_t rfidChannel = -1;
 bool calibrationActive = false;
+bool doorDisplayLinkReady = false;
 bool screenDirty = true;
+bool buttonRawPressed = false;
+bool buttonStablePressed = false;
 String messageTitle;
 String messageBody;
 String serialCommand;
+IPAddress lastDoorClient;
+String lastDoorReportedState;
 
 bool sessionActive() { return activeUid[0] != '\0'; }
+
+const char* doorDisplayState() {
+  if (sessionActive()) return "IN_USE";
+  if (calibrationActive || !pulseStorage.healthy() || !sessions.healthy() ||
+      !settings.healthy() || !relayReady || !rfidReady) return "UNAVAILABLE";
+  return "OPEN";
+}
+
+void serviceDoorDisplayLink() {
+  if (!doorDisplayLinkReady) return;
+
+  int packetSize = 0;
+  while ((packetSize = doorDisplayUdp.parsePacket()) > 0) {
+    char request[48] = {0};
+    const int length = doorDisplayUdp.read(
+        reinterpret_cast<uint8_t*>(request), sizeof(request) - 1);
+    if (length <= 0) continue;
+    request[length] = '\0';
+    if (strcmp(request, Config::DOOR_STATUS_REQUEST) != 0) continue;
+
+    const IPAddress client = doorDisplayUdp.remoteIP();
+    const uint16_t clientPort = doorDisplayUdp.remotePort();
+    const char* state = doorDisplayState();
+    char response[48];
+    snprintf(response, sizeof(response), "%s%s", Config::DOOR_STATUS_PREFIX, state);
+
+    doorDisplayUdp.beginPacket(client, clientPort);
+    doorDisplayUdp.write(reinterpret_cast<const uint8_t*>(response), strlen(response));
+    doorDisplayUdp.endPacket();
+
+    if (client != lastDoorClient || lastDoorReportedState != state) {
+      Serial.printf("[DOOR] client=%s state=%s\n", client.toString().c_str(), state);
+      lastDoorClient = client;
+      lastDoorReportedState = state;
+    }
+  }
+}
+
 float gallonsFor(uint32_t pulses) {
   const float calibration = settings.pulsesPerGallon();
   return calibration > 0.0F ? pulses / calibration : 0.0F;
@@ -66,11 +121,6 @@ String uidToHex(const uint8_t* uid, int length) {
   char hex[21] = {0};
   for (int i = 0; i < length && i < 10; ++i) snprintf(hex + i * 2, sizeof(hex) - i * 2, "%02X", uid[i]);
   return String(hex);
-}
-
-bool devicePresent(uint8_t address) {
-  Wire.beginTransmission(address);
-  return Wire.endTransmission() == 0;
 }
 
 void drawCentered(const String& text, int y, int size, uint16_t color) {
@@ -115,6 +165,8 @@ void drawScreen() {
     M5.Display.fillRoundRect(18, 140, 284, 14, 7, TFT_DARKGREY);
     const float ratio = constrain(gallonsFor(sessionPulses) / activeAllowance, 0.0F, 1.0F);
     M5.Display.fillRoundRect(18, 140, static_cast<int>(284 * ratio), 14, 7, ratio > .85F ? TFT_ORANGE : TFT_GREEN);
+    drawCentered(relays.isOn(Config::PUMP_RELAY) ? "WATER ON" : "WATER PAUSED", 157, 1,
+                 relays.isOn(Config::PUMP_RELAY) ? TFT_GREEN : TFT_ORANGE);
     M5.Display.fillRoundRect(24, 174, 272, 52, 12, TFT_MAROON);
     M5.Display.drawRoundRect(24, 174, 272, 52, 12, TFT_RED);
     M5.Display.setTextDatum(middle_center);
@@ -138,6 +190,33 @@ void drawScreen() {
   }
   M5.Display.endWrite();
   screenDirty = false;
+}
+
+void discoverI2cDevices() {
+  if (!hubReady) {
+    for (uint8_t address = 0x70; address <= 0x77 && !hubReady; ++address) {
+      hubReady = i2cHub.begin(Wire, address);
+      if (hubReady) hubAddress = address;
+    }
+  }
+  if (!hubReady) return;
+
+  if (!relayReady) {
+    relayChannel = i2cHub.findDevice(Config::RELAY_ADDRESS);
+    relayReady = relayChannel >= 0 && relays.begin(Wire, Config::RELAY_ADDRESS, &i2cHub, relayChannel);
+    if (relayReady) relays.allOff();
+  }
+  if (!rfidReady) {
+    rfidChannel = i2cHub.findDevice(Config::RFID_ADDRESS);
+    rfidReady = rfidChannel >= 0 && rfid.begin(Wire, Config::RFID_ADDRESS, &i2cHub, rfidChannel);
+  }
+}
+
+void serviceI2cRecovery() {
+  if ((hubReady && relayReady && rfidReady) ||
+      millis() - lastBusProbeMs < 5000 || sessionActive() || calibrationActive) return;
+  lastBusProbeMs = millis();
+  discoverI2cDevices();
 }
 
 bool flushPulses() {
@@ -182,7 +261,8 @@ void startSession(const String& uid) {
     setMessage("UNAVAILABLE", "Usage storage needs service");
     return;
   }
-  if (!relayReady || !relays.set(Config::PUMP_RELAY, true)) {
+  // Authentication opens a session; the physical button starts water flow.
+  if (!relayReady || !relays.set(Config::PUMP_RELAY, false)) {
     relayReady = false;
     stopPump();
     summaryGallons = 0.0F;
@@ -201,7 +281,7 @@ void startSession(const String& uid) {
   }
   screenState = ScreenState::ACTIVE;
   screenDirty = true;
-  Serial.printf("[SESSION] start uid=%s name=%s allowance=%.2f relay=%u\n", activeUid,
+  Serial.printf("[SESSION] start uid=%s name=%s allowance=%.2f relay=%u pump=off\n", activeUid,
                 activeName, activeAllowance, Config::PUMP_RELAY);
 }
 
@@ -297,12 +377,44 @@ void handleTouch() {
   if (screenState == ScreenState::ACTIVE && touch.y >= 166) endSession("BUTTON");
 }
 
+void handlePumpButton() {
+  const bool pressed = digitalRead(Config::PUMP_BUTTON_PIN) == LOW;
+  if (pressed != buttonRawPressed) {
+    buttonRawPressed = pressed;
+    buttonChangedMs = millis();
+  }
+  if (millis() - buttonChangedMs < Config::BUTTON_DEBOUNCE_MS ||
+      pressed == buttonStablePressed) return;
+
+  buttonStablePressed = pressed;
+  if (!pressed) return;
+  if (calibrationActive) {
+    Serial.println("[BUTTON] ignored during calibration");
+    return;
+  }
+  if (!sessionActive()) {
+    Serial.println("[BUTTON] ignored; no authorized session");
+    return;
+  }
+
+  const bool turnOn = !relays.isOn(Config::PUMP_RELAY);
+  if (!relayReady || !relays.set(Config::PUMP_RELAY, turnOn)) {
+    relayReady = false;
+    Serial.println("[BUTTON] pump relay write failed");
+    endSession("RELAY_ERROR");
+    return;
+  }
+  Serial.printf("[BUTTON] pump=%s\n", turnOn ? "on" : "off");
+  screenDirty = true;
+}
+
 void printStatus() {
-  Serial.printf("[STATE] state=%u uid=%s pulses=%lu gallons=%.3f limit=%.2f relay=0x%02X sd=%s rfid=%s calibration=%.2f\n",
+  Serial.printf("[STATE] state=%u uid=%s pulses=%lu gallons=%.3f limit=%.2f relay=0x%02X sd=%s hub=%s@0x%02X relay_ch=%d rfid=%s rfid_ch=%d calibration=%.2f\n",
                 static_cast<unsigned>(screenState), sessionActive() ? activeUid : "NONE",
                 static_cast<unsigned long>(sessionPulses), gallonsFor(sessionPulses),
                 activeAllowance, relays.state(), pulseStorage.healthy() ? "ok" : "fail",
-                rfidReady ? "ok" : "fail", settings.pulsesPerGallon());
+                hubReady ? "ok" : "fail", hubAddress, relayChannel,
+                rfidReady ? "ok" : "fail", rfidChannel, settings.pulsesPerGallon());
 }
 
 void processSerialCommand(String command) {
@@ -310,7 +422,10 @@ void processSerialCommand(String command) {
   if (command == "off") { if (sessionActive()) endSession("SERIAL"); else { stopPump(); setMessage("PUMP OFF", "Safety stop complete"); } }
   else if (command == "end") endSession("SERIAL");
   else if (command == "status") printStatus();
-  else if (!command.isEmpty()) Serial.println("[HELP] commands: off end status");
+  else if (command == "tone") Serial.println(speakerAudio.playTestTone() ? "[AUDIO] tone requested" : "[AUDIO] speaker not connected");
+  else if (command == "play") Serial.println(speakerAudio.playSong() ? "[AUDIO] song requested" : "[AUDIO] speaker/file unavailable");
+  else if (command == "stop") speakerAudio.stop();
+  else if (!command.isEmpty()) Serial.println("[HELP] commands: off end status tone play stop");
 }
 
 void handleSerial() {
@@ -327,8 +442,16 @@ void setup() {
   delay(200);
   auto config = M5.config();
   M5.begin(config);
+  // Tough's AXP192 gates 5 V to the external HY2.0 ports. Keep Port A powered
+  // explicitly before probing the PaHUB rather than relying on library defaults.
+  M5.Power.setExtOutput(true);
+  delay(150);
   M5.Display.setRotation(1);
   M5.Display.setTextWrap(false);
+  pinMode(Config::PUMP_BUTTON_PIN, INPUT_PULLUP);
+  buttonRawPressed = digitalRead(Config::PUMP_BUTTON_PIN) == LOW;
+  buttonStablePressed = buttonRawPressed;
+  buttonChangedMs = millis();
   drawScreen();
 
   flow.begin(Config::FLOW_PIN);
@@ -340,26 +463,36 @@ void setup() {
 
   Wire.end(); delay(10);
   Wire.begin(Config::I2C_SDA, Config::I2C_SCL, Config::I2C_FREQUENCY);
-  relayReady = relays.begin(Wire, Config::RELAY_ADDRESS);
-  rfidReady = rfid.begin(Wire, Config::RFID_ADDRESS);
-  if (relayReady) relays.allOff();
+  discoverI2cDevices();
   const bool adminReady = admin.begin();
+  doorDisplayLinkReady = adminReady && doorDisplayUdp.begin(Config::DOOR_DISPLAY_PORT);
+  const bool audioReady = speakerAudio.begin();
 
-  Serial.printf("[BOOT] sd=%s members=%s settings=%s sessions=%s relay=%s rfid=%s admin=%s\n",
+  Serial.printf("[BOOT] board=%u ext5v=%s sd=%s members=%s settings=%s sessions=%s hub=%s relay=%s rfid=%s admin=%s\n",
+                static_cast<unsigned>(M5.getBoard()), M5.Power.getExtOutput()?"on":"off",
                 sdReady?"ok":"fail", membersReady?"ok":"fail", settingsReady?"ok":"fail",
-                sessionsReady?"ok":"fail", relayReady?"ok":"fail", rfidReady?"ok":"fail", adminReady?"ok":"fail");
+                sessionsReady?"ok":"fail", hubReady?"ok":"fail", relayReady?"ok":"fail",
+                rfidReady?"ok":"fail", adminReady?"ok":"fail");
   Serial.printf("[WEB] ssid=%s address=http://%s/ user=%s\n", Config::WIFI_AP_NAME,
                 admin.address().c_str(), Config::ADMIN_USERNAME);
-  Serial.printf("[I2C] relay_0x26=%s rfid_0x28=%s\n",
-                devicePresent(Config::RELAY_ADDRESS)?"yes":"no", devicePresent(Config::RFID_ADDRESS)?"yes":"no");
-  Serial.println("[HELP] commands: off end status");
+  Serial.printf("[DOOR] udp_port=%u link=%s\n", Config::DOOR_DISPLAY_PORT,
+                doorDisplayLinkReady ? "ready" : "failed");
+  Serial.printf("[AUDIO] source=%s file=%s path=%s\n", audioReady ? "ready" : "failed",
+                speakerAudio.fileAvailable() ? "ready" : "missing", Config::AUDIO_PATH);
+  Serial.printf("[I2C] pahub_0x%02X=%s relay_0x26=ch%d rfid_0x28=ch%d\n",
+                hubAddress, hubReady?"yes":"no", relayChannel, rfidChannel);
+  Serial.println("[HELP] commands: off end status tone play stop");
   screenDirty = true;
 }
 
 void loop() {
   M5.update();
   admin.handle();
+  speakerAudio.handle();
+  serviceDoorDisplayLink();
+  serviceI2cRecovery();
   handleTouch();
+  handlePumpButton();
   handleSerial();
   pollFlow();
   pollRfid();
