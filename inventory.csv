@@ -1,0 +1,56 @@
+Subsystem,Item,Spec / Part,Qty Required,On Hand,Need,Status,Unit $,Vendor / Link (Amazon),Notes
+Power & Charging,Battery,DC HOUSE 12V 30Ah LiFePO4 (2-pack),1,,,selected,$139.99 /2-pack,https://www.amazon.com/dp/B0DHZPPKQS,2-pack covers both stations. Was spec'd 40Ah
+Power & Charging,Battery (alt),"12V 20Ah LiFePO4, built-in 20A BMS",0,,,searching,,https://www.amazon.com/dp/B0CY1RWLXR,Smaller alternative (not counted)
+Power & Charging,AC charger,"ECO-WORTHY 12V 10A (Lead/LiFePO4), LCD",1,,,selected,$64.99,https://www.amazon.com/dp/B09ZQFDRZN,Generator-fed
+Power & Charging,AC charger (alt),"ECO-WORTHY 12V 5A, LCD",0,,,searching,$45.99,https://www.amazon.com/dp/B08T95FF8K,Slower alternative (not counted)
+Power & Charging,Battery monitor,"Gasedin mini LED voltmeter (2-pack, green)",1,,,selected,$8.99 /2-pack,https://www.amazon.com/dp/B0F4XGZVSP,Voltage-only (not coulomb)
+Power & Charging,Battery monitor (alt),"Gasedin voltmeter (2-pack, red)",0,,,searching,$8.54 /2-pack,https://www.amazon.com/dp/B0F4XBGJMV,Color variant (not counted)
+Power & Charging,Controller 5V supply,MELIFE LM2596 12V->5V buck (2-pack),1,,,selected,see listing,https://www.amazon.com/dp/B08977C9YM,For 5V into PaHub (see open decision)
+Power & Charging,Solar panel,50 W 12V,1,,,searching,,,Not on list yet
+Power & Charging,Solar charge controller,12V MPPT/PWM,1,,,searching,,,Size to panel
+Protection & Distribution,Main breaker,Bolipoeq 30A manual-reset (4-pack),1,,,selected,$29.99 /4-pack,https://www.amazon.com/dp/B0DHCGYGJM,Main disconnect; IP67
+Protection & Distribution,Fuse block,"DaierTek 12-way ATO/ATC, LED, waterproof",1,,,selected,$15.99,https://www.amazon.com/dp/B0CGT91KTR,Fused branch distribution
+Protection & Distribution,Busbar,"RVBOATPAT 150A 1/4"" stud marine busbar",1,,,selected,$16.99,https://www.amazon.com/dp/B0CF1N8FM8,Negative / common bus
+Protection & Distribution,Fuses,ATO/ATC assortment (15/10/5/3-5A),0,,,searching,,,See Wiring.md
+Pump & Plumbing,Pump,"SEAFLO 42-Series 12V, 3.0 GPM, 55 PSI",1,,,selected,$64.99,https://www.amazon.com/dp/B01CQ7DD0S,UL listed; self-priming
+Pump & Plumbing,Pump (alt),"USA Adventure Gear 3200, 3.2 GPM 55 PSI 8A",0,,,searching,,https://www.amazon.com/dp/B07BVSD4PF,Alternative pump (not counted)
+Pump & Plumbing,Accumulator,"SEAFLO 0.75 L, 125 PSI",1,,,selected,$35.99,https://www.amazon.com/dp/B01MUYL8F8,Smooths cycling
+Pump & Plumbing,Inline strainer,"Shurflo 255-213 1/2"" for 2088 pumps",1,,,selected,$7.95,https://www.amazon.com/dp/B00IU0N5ZO,Pump-inlet filter
+Pump & Plumbing,Water filter (opt),Waterdrop 10UA under-sink,0,,,searching,$43.99,https://www.amazon.com/dp/B083NPW1DN,Optional fine filter
+Pump & Plumbing,Water heater,"CAMPLUX tankless propane, 1.58 GPM, 41k BTU",1,,,selected,$179.99,https://www.amazon.com/dp/B097JTWBGH,Propane not 12V - see note
+Pump & Plumbing,Mixing valve,Thermostatic 1/2 NPT brass,1,,,selected,$29.99,https://www.amazon.com/dp/B0C9TKWMN8,Temp control
+Pump & Plumbing,Flow sensor,"SENSTREE G1/2 Hall, 1-30 L/min",1,,,selected,$8.99,https://www.amazon.com/dp/B0CC949527,Pulse output; Arduino-compatible
+Pump & Plumbing,Foot pump (opt),"GHmarine 2147 manual, 1/2"" hose",0,,,searching,$29.99,https://www.amazon.com/dp/B09VBX7ZDJ,Manual backup / sink
+Pump & Plumbing,Tank,500 gal (shared/camp),1,,,selected,,,Shared resource
+Plumbing Fittings & Hose,Cold-bypass valve,BesNPT 1/2 brass 3-way Y ball valve,1,,,selected,$13.99,https://www.amazon.com/dp/B0CT8BL9V9,Cold bypass / blend
+Plumbing Fittings & Hose,Shower hose,"Blissland 90"" handheld, brushed chrome",1,,,selected,$12.99,https://www.amazon.com/dp/B0B62QF1Q2,
+Plumbing Fittings & Hose,Supply hose,Midanya 24 1/2 FIP braided (2-pack),1,,,selected,$11.99,https://www.amazon.com/dp/B0CZR5N4P3,
+Plumbing Fittings & Hose,Short supply hose,Midanya 9 1/2 FIP x 1/2 FIP braided SS (2-pack),3,,,selected,$12.59 /2-pack,https://www.amazon.com/dp/B0GT4WHS46,Need 5; 3 packs = 6 (1 spare)
+Plumbing Fittings & Hose,Suction tubing,"DAVCO 1/2"" ID reinforced vinyl, 25 ft",1,,,selected,$25.99,https://www.amazon.com/dp/B09W4KSB5X,Tank feed
+Plumbing Fittings & Hose,Suction hose (1in),"DAVCO 1"" ID wire-reinforced PVC, 25 ft",1,,,selected,$44.99,https://www.amazon.com/dp/B0F1TKPPDR,Larger low-restriction tank suction
+Plumbing Fittings & Hose,Hose barb,SUNGATOR 1 NPT male barb (2-pack),1,,,selected,$10.99,https://www.amazon.com/dp/B0CLY4WNJ7,Tank fitting
+Plumbing Fittings & Hose,Manifold (opt),SNGSPK 304 SS 5-way 1 NPT,0,,,searching,,https://www.amazon.com/dp/B0FLTW68VT,Distribution branch (not counted)
+Control Electronics,Controller,M5Stack Tough ESP32 (2.0 touch IP-rated),1,,,selected,$64.90,https://www.amazon.com/dp/B0C7GL8RP8,12V via RS485 conn.
+Control Electronics,I2C hub,M5Stack PaHub v2.1 (PCA9548A 6-port),1,,,selected,$15.99,https://www.amazon.com/dp/B0G5N1FSNG,Grove I2C expansion
+Control Electronics,RFID/NFC reader,M5Stack RFID2 (WS1850S 13.56 MHz),1,,,selected,,https://www.amazon.com/dp/B0F3N3XMDM,MIFARE / NTAG compatible
+Control Electronics,Relay unit,M5Stack 4Relay (10A/16A I2C),1,,,selected,$29.99,https://www.amazon.com/dp/B0H27XRW4T,Grove; incl. 3.96 terminals
+Control Electronics,Automotive relay,5-pin 40/30A 12V waterproof w/ harness,1,,,selected,$25.99,https://www.amazon.com/dp/B074FSZWVT,Pump switching
+Control Electronics,SD card,For CSV logs,1,,,searching,,,Not on list
+Control Electronics,RTC,Real-time clock,1,,,undecided,,,For log timestamps
+Charging & Accessories,USB-C buck converter,"BEYIMEI 12V->5V USB-C, 3A/15W, fused",1,,,selected,$13.99,https://www.amazon.com/dp/B0D3THTQJK,Session-gated
+Charging & Accessories,USB-C panel outlet,,1,,,searching,,,
+Charging & Accessories,LED strip,12V addressable ~24 ft,1,,,searching,,,Strip TBD
+Connectors Wire & Terminals,Anderson SB50,"PAEKQ 50A cable, 7 AWG, O-ring (pair)",1,,,selected,$16.99 /pair,https://www.amazon.com/dp/B0F6L9L9GG,Battery quick-disconnect
+Connectors Wire & Terminals,Deutsch DT (pump),Nilight 2-pin DT 16 AWG (6 kits),1,,,selected,$12.30,https://www.amazon.com/dp/B0CMQHQ3LL,Waterproof
+Connectors Wire & Terminals,Lever connectors,HTCELLE 28-12 AWG splice kit (60 pc),1,,,selected,$9.99,https://www.amazon.com/dp/B0C3LBWSTZ,Quick splices
+Connectors Wire & Terminals,Silicone wire,"BNTECHGO 18 AWG red+black, 100 ft ea",1,,,selected,$34.98,https://www.amazon.com/dp/B091GHDSH8,Controller power
+Connectors Wire & Terminals,Silicone wire,"BNTECHGO 18 AWG red+black, 25 ft ea",1,,,selected,$13.98,https://www.amazon.com/dp/B01C5CANVG,Signals / jumpers
+Connectors Wire & Terminals,Ring terminals,"MENTBERY 16-14 AWG 1/4"" stud (50 pc blue)",1,,,selected,$7.99,https://www.amazon.com/dp/B0BWJ8G5P9,
+Connectors Wire & Terminals,Ring terminals,"MENTBERY 22-16 AWG 1/4"" stud (50 pc red)",1,,,selected,$5.99,https://www.amazon.com/dp/B0BWJ92F6G,
+Connectors Wire & Terminals,SAE fused pigtail,BFXM 10 AWG SAE-ring 15/20A fuse (2-pack),1,,,selected,$12.99,https://www.amazon.com/dp/B0D66QVPQK,Quick-disconnect / solar / charger
+Connectors Wire & Terminals,MC4 (solar),Solar connectors,1,,,searching,,,Not on list
+Connectors Wire & Terminals,Grove,I2C device cables,0,,,searching,,,Not on list
+Connectors Wire & Terminals,Wire 12/16 AWG,Power runs (pump/main/lighting),0,,,searching,,,See Wiring.md gauges
+RFID / NFC Tags,NTAG213,Candidate,0,,,searching (test),,,
+RFID / NFC Tags,NTAG215,Candidate,0,,,searching (test),,,
+RFID / NFC Tags,NTAG216,Candidate,0,,,searching (test),,,

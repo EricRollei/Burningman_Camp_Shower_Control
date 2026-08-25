@@ -1,0 +1,62 @@
+%% Camp Shower — M5Stack Tough touchscreen flow (ScreenState transitions)
+%% Source: firmware/shower-controller/src/main.cpp (drawScreen, setMessage, startSession, endSession, handleCalibration)
+%% Render with the Mermaid Live Editor (https://mermaid.live) or the VS Code Mermaid preview.
+flowchart TD
+    Ready(["READY SCREEN — ScreenState::IDLE\nHeader: 'CAMP SHOWER'\n'READY WHEN YOU ARE'\nTAP WRISTBAND\n'10 gallon default · admin adjustable'"])
+
+    Ready --> Tap{Wristband tapped\non RFID reader}
+
+    Tap -->|Admin enrollment armed| MsgEnrolled["MESSAGE screen\n'WRISTBAND ADDED'\n'Enrollment complete'"]
+    Tap -->|Unknown tag| MsgUnknown["MESSAGE screen\n'NOT AUTHORIZED'\n'See a camp admin'"]
+    Tap -->|Tag disabled| MsgDisabled["MESSAGE screen\n'NOT AUTHORIZED'\n'Wristband disabled'"]
+    Tap -->|Tag OK, but SD/session\nstorage unhealthy| MsgStorage["MESSAGE screen\n'UNAVAILABLE'\n'Usage storage needs service'"]
+    Tap -->|Tag OK, but pump\nrelay fails| MsgPump["MESSAGE screen\n'UNAVAILABLE'\n'Pump control needs service'"]
+    Tap -->|Tag OK, but usage\nlog can't start| MsgLog["MESSAGE screen\n'UNAVAILABLE'\n'Could not start usage log'"]
+    Tap -->|A different shower\nis already running| MsgBusy["MESSAGE flash\n'SHOWER BUSY'\n'Finish the current shower'\n(screen snaps right back to ACTIVE)"]
+    Tap -->|Same guest re-taps\nwithin 2.5s| ReadyNoop[Tap ignored, no screen change]
+    Tap -->|Tag OK, everything healthy,\nno session running| Active
+
+    MsgEnrolled --> Ready
+    MsgUnknown --> Ready
+    MsgDisabled --> Ready
+    MsgStorage --> Ready
+    MsgPump --> Ready
+    MsgLog --> Ready
+    MsgBusy --> Active
+    ReadyNoop --> Active
+
+    subgraph Active["SHOWER IN PROGRESS — ScreenState::ACTIVE"]
+        direction TB
+        Act1["Header: 'SHOWER IN PROGRESS' (green)\nGuest name\ngallons used, e.g. '2.35 gal'\n'of 10.0 gallon limit'\nprogress bar (turns orange &gt;85%)\n'WATER ON' (green) / 'WATER PAUSED' (orange)\nred 'END SHOWER' button"]
+        Act2["Guest presses physical\npump button on unit"]
+        Act3["Toggles WATER ON ⇄ WATER PAUSED\ntext updates in place"]
+        Act1 --> Act2 --> Act3 --> Act1
+    end
+
+    Active --> EndWhy{Session ends}
+    EndWhy -->|Guest taps red\n'END SHOWER' on screen| EndOk
+    EndWhy -->|Gallons used ≥ limit| EndOk
+    EndWhy -->|20-minute safety timeout| EndOk
+    EndWhy -->|Pump relay write fails\nmid-session| EndOk
+
+    EndOk["endSession() runs:\npump forced off, pulses flushed,\nsession record appended"] --> LogCheck{Logging\nsucceeded?}
+    LogCheck -->|Yes| MsgComplete["MESSAGE screen (5s)\n'SHOWER COMPLETE'\n'Thank you!'\nshows total gallons used"]
+    LogCheck -->|No| MsgLogErr["MESSAGE screen (5s)\n'LOGGING ERROR'\n'Tell a camp admin'"]
+    MsgComplete --> Ready
+    MsgLogErr --> Ready
+
+    %% Admin/service-triggered screens that also appear on this same display
+    Ready -.->|Admin starts calibration\nfrom web dashboard| Calib
+    subgraph Calib["ADMIN CALIBRATION — ScreenState::CALIBRATION"]
+        direction TB
+        Cal1["Header: 'ADMIN CALIBRATION' (orange)\n'DISPENSING'\nlive pulse count\n'Stop and enter the known volume\nfrom the admin page'\n'Pump is ON'"]
+    end
+    Calib -->|Admin stops,\nvalid volume entered| MsgCalSaved["MESSAGE screen (5s)\n'CALIBRATION SAVED'\n'X.X pulses / gallon'"]
+    Calib -->|Admin stops,\nno pulses captured| MsgCalFail["MESSAGE screen\n'CALIBRATION FAILED'\n'No flow pulses captured'"]
+    Calib -->|10-minute safety timeout| MsgCalTimeout["MESSAGE screen\n'CALIBRATION STOPPED'\n'10 minute safety timeout'"]
+    MsgCalSaved --> Ready
+    MsgCalFail --> Ready
+    MsgCalTimeout --> Ready
+
+    Ready -.->|Serial 'off' command\n(bench/service use)| MsgPumpOff["MESSAGE screen\n'PUMP OFF'\n'Safety stop complete'"]
+    MsgPumpOff --> Ready

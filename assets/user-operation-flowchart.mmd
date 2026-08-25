@@ -1,0 +1,59 @@
+%% Camp Shower — User-Facing Operation Flow (with door sign states)
+%% Sources: firmware/shower-controller/src/main.cpp, firmware/door-display/src/main.cpp
+%% Render with the Mermaid Live Editor (https://mermaid.live) or the VS Code Mermaid preview.
+flowchart TD
+    Idle(["IDLE screen\n'READY WHEN YOU ARE'\n'TAP WRISTBAND'"])
+
+    Idle --> Tap[Guest taps wristband on RFID reader]
+    Tap --> Check{Wristband\nrecognized & enabled?}
+
+    Check -->|No — unknown tag| NotAuth1["NOT AUTHORIZED\n'See a camp admin'"]
+    Check -->|No — disabled tag| NotAuth2["NOT AUTHORIZED\n'Wristband disabled'"]
+    NotAuth1 --> BackIdle1[Auto-returns to IDLE\nafter a few seconds]
+    NotAuth2 --> BackIdle1
+
+    Check -->|Yes| Busy{Is a shower\nalready running?}
+    Busy -->|Yes, different guest| ShowerBusy["SHOWER BUSY\n'Finish the current shower'"]
+    ShowerBusy --> Active
+    Busy -->|Yes, same guest re-taps| Ignore[Tap ignored]
+    Ignore --> Active
+    Busy -->|No| Start
+
+    Start["SHOWER IN PROGRESS screen opens\nGuest name shown, water starts OFF"] --> Active
+
+    subgraph Active["Active shower — guest at the controller"]
+        direction TB
+        A1["Screen shows: gallons used / gallon limit\nprogress bar + WATER ON / WATER PAUSED"]
+        A2["Press physical pump button\n→ toggles water ON ⇄ PAUSED"]
+        A1 --> A2 --> A1
+    end
+
+    Active --> EndCheck{How does the\nshower end?}
+
+    EndCheck -->|Guest taps END SHOWER\non touchscreen| EndManual[Guest ends shower manually]
+    EndCheck -->|Gallon limit reached\n10 gal default| EndLimit[Shower ends automatically]
+    EndCheck -->|20 minutes elapsed| EndTimeout[Shower ends automatically\nsafety timeout]
+
+    EndManual --> Complete
+    EndLimit --> Complete
+    EndTimeout --> Complete
+
+    Complete["SHOWER COMPLETE screen\nshows total gallons used\n'Thank you!'"] --> BackIdle2[Auto-returns to IDLE\nafter ~5 seconds]
+    BackIdle2 --> Idle
+    BackIdle1 --> Idle
+
+    %% ===================== Outside door sign =====================
+    subgraph DoorSign["Outside door sign — NanoC6 + OLED (updates ~2x/sec)"]
+        direction TB
+        SignOpen["'OPEN' header, white background\nrotates a tagline every few seconds:\nHEY STINKY → SHOWER TIME → SCRUB A DUB →\nGET FRESH → SOAP AWAITS"]
+        SignInUse["'IN USE'\nwhite text on black background"]
+        SignOffline["'OFFLINE'\n(or 'CONNECTING' before first reply)"]
+        SignOpen -->|controller reports shower started| SignInUse
+        SignInUse -->|controller reports shower ended| SignOpen
+        SignOpen -.no valid reply for 3s.-> SignOffline
+        SignInUse -.no valid reply for 3s.-> SignOffline
+        SignOffline -.link restored.-> SignOpen
+    end
+
+    Idle == guest sees ==> SignOpen
+    Active == guest sees ==> SignInUse

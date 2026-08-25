@@ -1,0 +1,92 @@
+%% M5Stack Tough Shower Controller — Firmware Flow
+%% Source: firmware/shower-controller/src/main.cpp
+%% Render with the Mermaid Live Editor (https://mermaid.live) or the VS Code Mermaid preview.
+flowchart TD
+    Start([Power On]) --> Boot
+
+    subgraph Boot["setup()"]
+        B1[Init M5Unified + Display + enable Ext 5V] --> B2[Configure pump button pin]
+        B2 --> B3[Init FlowMeter on GPIO26]
+        B3 --> B4[Init SD: PulseStorage / MemberRegistry / SettingsStore / SessionStorage]
+        B4 --> B5[Init I2C bus, discover PaHUB → Relay 0x26 + RFID2 0x28]
+        B5 --> B6[Start AdminServer Wi-Fi AP + web dashboard]
+        B6 --> B7[Start door-display UDP link + SpeakerAudio]
+        B7 --> B8[Force all relays OFF, draw IDLE screen]
+    end
+
+    Boot --> Loop
+
+    subgraph Loop["loop() — runs every ~5ms"]
+        L0[M5.update / admin.handle / speakerAudio.handle] --> L1[serviceDoorDisplayLink: reply to NanoC6 status UDP requests]
+        L1 --> L2[serviceI2cRecovery: retry missing hub/relay/RFID every 5s when idle]
+        L2 --> L3[handleTouch]
+        L3 --> L4[handlePumpButton]
+        L4 --> L5[handleSerial: off/end/status/tone/play/stop]
+        L5 --> L6[pollFlow]
+        L6 --> L7[pollRfid]
+        L7 --> L8[handleCalibration]
+        L8 --> L9{Session active?}
+        L9 -->|yes, log interval elapsed| L10[flushPulses to PulseStorage]
+        L9 -->|yes, 20 min elapsed| L11[endSession TIMEOUT]
+        L9 -->|no| L12[skip]
+        L10 --> L13
+        L11 --> L13
+        L12 --> L13[Message timer expired? → back to IDLE]
+        L13 --> L14{screenDirty?}
+        L14 -->|yes, every 100ms| L15[drawScreen for current ScreenState]
+        L14 --> L0
+        L15 --> L0
+    end
+
+    %% RFID branch
+    L7 --> R1{Tag scanned & not repeat?}
+    R1 -->|admin enrollment pending| R2[admin.onTagScanned: write MEMBERS.CSV, show WRISTBAND ADDED]
+    R1 -->|calibration active| R3[ignore scan]
+    R1 -->|session active, same/other uid| R4[ignore or show SHOWER BUSY]
+    R1 -->|no session, valid tag| S1
+
+    subgraph StartSession["startSession(uid)"]
+        S1[Look up member: enrolled + enabled?] -->|no| S2[NOT AUTHORIZED message]
+        S1 -->|yes| S3{Storage healthy?}
+        S3 -->|no| S4[UNAVAILABLE: storage needs service]
+        S3 -->|yes| S5[relays.set PUMP off, pulseStorage.selectTag]
+        S5 -->|fail| S6[UNAVAILABLE: pump/log error]
+        S5 -->|ok| S7[ScreenState = ACTIVE, session timers start]
+    end
+
+    %% Flow / button branch
+    L6 --> F1{New flow pulses since last poll?}
+    F1 -->|session active| F2[Add to pendingPulses + sessionPulses]
+    F2 --> F3{gallons ≥ allowance?}
+    F3 -->|yes| EndSession
+    F3 -->|no| F4[update progress bar on screen]
+
+    L4 --> P1{Button pressed edge, debounced}
+    P1 -->|calibration active| P2[ignore]
+    P1 -->|no session| P3[ignore]
+    P1 -->|session active| P4[Toggle pump relay ON/OFF]
+    P4 -->|relay write fails| EndSession
+
+    L3 --> T1{Touch in END SHOWER zone while ACTIVE?}
+    T1 -->|yes| EndSession
+
+    subgraph EndSession["endSession(reason)"]
+        E1[stopPump: all relays OFF] --> E2[flushPulses + pulseStorage.endTag]
+        E2 --> E3[sessions.append session record to SESSIONS.CSV]
+        E3 --> E4[Show SHOWER COMPLETE / LOGGING ERROR message]
+        E4 --> E5[Clear active uid/name, return to IDLE after timer]
+    end
+
+    S7 --> Loop
+
+    %% Calibration branch
+    subgraph Calibration["handleCalibration() — admin-triggered"]
+        C1[Admin requests calibration start] --> C2{Session active?}
+        C2 -->|yes| C3[Reject: finish shower first]
+        C2 -->|no| C4[Turn pump ON, record start pulses]
+        C4 --> C5[ScreenState = CALIBRATION, stream pulse count to admin page]
+        C5 --> C6{Admin stops with known gallons, or 10-min timeout?}
+        C6 -->|timeout| C7[Stop pump, CALIBRATION STOPPED, value unchanged]
+        C6 -->|admin stop, valid data| C8[Compute pulses/gallon, save to SettingsStore]
+        C6 -->|admin stop, no pulses| C9[CALIBRATION FAILED, value unchanged]
+    end
