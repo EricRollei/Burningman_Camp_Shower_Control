@@ -6,6 +6,7 @@
 #include "Config.h"
 #include "FlowMeter.h"
 #include "I2cHub.h"
+#include "LightShow.h"
 #include "MemberRegistry.h"
 #include "PulseStorage.h"
 #include "RelayController.h"
@@ -28,6 +29,7 @@ RelayController relays;
 RfidReader rfid;
 I2cHub i2cHub;
 WiFiUDP doorDisplayUdp;
+LightShow lightShow;
 
 ScreenState screenState = ScreenState::IDLE;
 char activeUid[21] = {0};
@@ -45,6 +47,13 @@ uint32_t calibrationStartPulses = 0;
 uint32_t calibrationStartMs = 0;
 uint32_t lastBusProbeMs = 0;
 uint32_t buttonChangedMs = 0;
+uint32_t lastMusicKnobReadMs = 0;
+uint32_t lastMusicKnobLogMs = 0;
+uint32_t lastMusicStartAttemptMs = 0;
+uint32_t lastMusicMovementMs = 0;
+uint16_t musicKnobRaw = 0;
+uint16_t musicMotionReferenceRaw = 0;
+uint16_t musicCalibrationPositions[Config::MUSIC_KNOB_POSITION_COUNT] = {0};
 float activeAllowance = 0.0F;
 float summaryGallons = 0.0F;
 bool rfidReady = false;
@@ -58,6 +67,13 @@ bool doorDisplayLinkReady = false;
 bool screenDirty = true;
 bool buttonRawPressed = false;
 bool buttonStablePressed = false;
+bool musicStartPending = false;
+bool musicKnobMoving = false;
+bool musicStaticStarted = false;
+bool musicCalibrationActive = false;
+uint8_t musicCalibrationNextPosition = 0;
+int8_t musicChannel = -1;
+String musicCalibrationMessage = "Ready to calibrate";
 String messageTitle;
 String messageBody;
 String serialCommand;
@@ -408,6 +424,157 @@ void handlePumpButton() {
   screenDirty = true;
 }
 
+void handleMusicKnob() {
+  const uint32_t now = millis();
+  if (now - lastMusicKnobReadMs < Config::MUSIC_KNOB_SAMPLE_MS) return;
+  lastMusicKnobReadMs = now;
+
+  const uint16_t sample = analogRead(Config::MUSIC_KNOB_PIN);
+  // A small low-pass filter removes ADC noise without making the knob sluggish.
+  musicKnobRaw = static_cast<uint16_t>(
+      (static_cast<uint32_t>(musicKnobRaw) * 7U + sample) / 8U);
+
+  if (admin.takeMusicCalibrationStartRequest()) {
+    speakerAudio.stop();
+    musicStartPending = false;
+    musicKnobMoving = false;
+    musicStaticStarted = false;
+    musicMotionReferenceRaw = musicKnobRaw;
+    musicChannel = 0;
+    musicCalibrationActive = true;
+    musicCalibrationNextPosition = 0;
+    memset(musicCalibrationPositions, 0, sizeof(musicCalibrationPositions));
+    musicCalibrationMessage = "Set knob to position 0, then capture";
+    Serial.println("[MUSIC] calibration started; waiting for position 0");
+  }
+  if (admin.takeMusicCalibrationCancelRequest()) {
+    musicCalibrationActive = false;
+    musicCalibrationNextPosition = 0;
+    musicChannel = -1;
+    musicKnobMoving = false;
+    musicStaticStarted = false;
+    musicMotionReferenceRaw = musicKnobRaw;
+    musicCalibrationMessage = "Calibration cancelled; previous values retained";
+    Serial.println("[MUSIC] calibration cancelled");
+  }
+  if (admin.takeMusicCalibrationCaptureRequest() && musicCalibrationActive) {
+    const uint8_t captured = musicCalibrationNextPosition;
+    musicCalibrationPositions[captured] = musicKnobRaw;
+    ++musicCalibrationNextPosition;
+    Serial.printf("[MUSIC] calibration position=%u raw=%u\n", captured, musicKnobRaw);
+    if (musicCalibrationNextPosition >= Config::MUSIC_KNOB_POSITION_COUNT) {
+      if (settings.setMusicKnobCalibration(musicCalibrationPositions)) {
+        musicCalibrationActive = false;
+        musicCalibrationNextPosition = 0;
+        musicChannel = -1;
+        musicKnobMoving = false;
+        musicStaticStarted = false;
+        musicMotionReferenceRaw = musicKnobRaw;
+        musicCalibrationMessage = "Saved positions 0-9";
+        Serial.println("[MUSIC] calibration saved");
+      } else {
+        musicCalibrationNextPosition = 0;
+        musicCalibrationMessage =
+            "Invalid spacing or range; return to position 0 and recapture";
+        Serial.println("[MUSIC] calibration rejected; points must be ordered and span at least 1000");
+      }
+    } else {
+      musicCalibrationMessage = "Set knob to position " +
+                                String(musicCalibrationNextPosition) +
+                                ", then capture";
+    }
+  }
+
+  if (musicCalibrationActive) {
+    musicMotionReferenceRaw = musicKnobRaw;
+  } else {
+    const uint16_t movement = static_cast<uint16_t>(abs(
+        static_cast<int>(musicKnobRaw) -
+        static_cast<int>(musicMotionReferenceRaw)));
+    if (movement >= Config::MUSIC_KNOB_MOTION_THRESHOLD) {
+      musicMotionReferenceRaw = musicKnobRaw;
+      lastMusicMovementMs = now;
+      if (!musicKnobMoving) {
+        musicKnobMoving = true;
+        musicStartPending = false;
+        musicStaticStarted = speakerAudio.startRadioStatic();
+        lastMusicStartAttemptMs = now;
+        Serial.printf("[MUSIC] knob moving raw=%u; tuning static=%s\n",
+                      musicKnobRaw, musicStaticStarted ? "on" : "waiting");
+      }
+    }
+
+    if (musicKnobMoving && !musicStaticStarted &&
+        now - lastMusicStartAttemptMs >= Config::MUSIC_KNOB_RETRY_MS) {
+      lastMusicStartAttemptMs = now;
+      musicStaticStarted = speakerAudio.startRadioStatic();
+    }
+
+    const bool settled = musicKnobMoving &&
+                         now - lastMusicMovementMs >=
+                             Config::MUSIC_KNOB_SETTLE_MS;
+    if (settled || (!musicKnobMoving && musicChannel < 0)) {
+      const int8_t previous = musicChannel;
+      uint8_t candidate = settings.nearestMusicPosition(musicKnobRaw);
+      if (!settings.musicKnobCalibrated() && musicChannel >= 0) {
+        if (musicChannel == 0 && musicKnobRaw < Config::MUSIC_KNOB_ON_RAW)
+          candidate = 0;
+        if (musicChannel > 0 && musicKnobRaw > Config::MUSIC_KNOB_OFF_RAW)
+          candidate = 1;
+      } else if (settings.musicKnobCalibrated() && musicChannel >= 0 &&
+                 candidate != static_cast<uint8_t>(musicChannel)) {
+        const uint16_t currentDistance = static_cast<uint16_t>(abs(
+            static_cast<int>(musicKnobRaw) -
+            static_cast<int>(settings.musicKnobPosition(musicChannel))));
+        const uint16_t candidateDistance = static_cast<uint16_t>(abs(
+            static_cast<int>(musicKnobRaw) -
+            static_cast<int>(settings.musicKnobPosition(candidate))));
+        if (candidateDistance + Config::MUSIC_KNOB_CHANNEL_HYSTERESIS >=
+            currentDistance) {
+          candidate = static_cast<uint8_t>(musicChannel);
+        }
+      }
+
+      musicKnobMoving = false;
+      musicStaticStarted = false;
+      musicMotionReferenceRaw = musicKnobRaw;
+      musicChannel = candidate;
+      musicStartPending = candidate > 0;
+      lastMusicStartAttemptMs = now - Config::MUSIC_KNOB_RETRY_MS;
+      if (candidate == 0) {
+        speakerAudio.stop();
+        Serial.printf("[MUSIC] knob settled raw=%u channel %d -> quiet\n",
+                      musicKnobRaw, previous);
+      } else {
+        Serial.printf("[MUSIC] knob settled raw=%u channel %d -> %u (%s)\n",
+                      musicKnobRaw, previous, candidate,
+                      Config::MUSIC_CHANNEL_NAMES[candidate]);
+      }
+    }
+
+    if (!musicKnobMoving && musicStartPending &&
+        now - lastMusicStartAttemptMs >= Config::MUSIC_KNOB_RETRY_MS) {
+      lastMusicStartAttemptMs = now;
+      if (speakerAudio.playChannel(static_cast<uint8_t>(musicChannel))) {
+        musicStartPending = false;
+        Serial.printf("[MUSIC] channel=%d song started\n", musicChannel);
+      } else {
+        Serial.println("[MUSIC] waiting for speaker and channel file");
+      }
+    }
+  }
+
+  admin.reportMusicKnob(musicKnobRaw, musicChannel, musicCalibrationActive,
+                        musicCalibrationNextPosition, musicCalibrationMessage);
+
+  if (now - lastMusicKnobLogMs >= 1000) {
+    lastMusicKnobLogMs = now;
+    Serial.printf("[MUSIC] knob=%u/4095 channel=%d moving=%s calibrated=%s\n",
+                  musicKnobRaw, musicChannel, musicKnobMoving ? "yes" : "no",
+                  settings.musicKnobCalibrated() ? "yes" : "no");
+  }
+}
+
 void printStatus() {
   Serial.printf("[STATE] state=%u uid=%s pulses=%lu gallons=%.3f limit=%.2f relay=0x%02X sd=%s hub=%s@0x%02X relay_ch=%d rfid=%s rfid_ch=%d calibration=%.2f\n",
                 static_cast<unsigned>(screenState), sessionActive() ? activeUid : "NONE",
@@ -415,6 +582,13 @@ void printStatus() {
                 activeAllowance, relays.state(), pulseStorage.healthy() ? "ok" : "fail",
                 hubReady ? "ok" : "fail", hubAddress, relayChannel,
                 rfidReady ? "ok" : "fail", rfidChannel, settings.pulsesPerGallon());
+  Serial.printf("[MUSIC] knob=%u/4095 channel=%d calibrated=%s speaker=%s speaker_volume=%u%% playback=%s pcm_bass=%u pcm_mid=%u pcm_treble=%u pcm_volume=%u\n",
+                musicKnobRaw, musicChannel,
+                settings.musicKnobCalibrated() ? "yes" : "no",
+                speakerAudio.connectionLabel(),
+                speakerAudio.speakerVolumePercent(), speakerAudio.playbackLabel(),
+                speakerAudio.bassLevel(), speakerAudio.midLevel(),
+                speakerAudio.trebleLevel(), speakerAudio.volumeLevel());
 }
 
 void processSerialCommand(String command) {
@@ -424,8 +598,14 @@ void processSerialCommand(String command) {
   else if (command == "status") printStatus();
   else if (command == "tone") Serial.println(speakerAudio.playTestTone() ? "[AUDIO] tone requested" : "[AUDIO] speaker not connected");
   else if (command == "play") Serial.println(speakerAudio.playSong() ? "[AUDIO] song requested" : "[AUDIO] speaker/file unavailable");
+  else if (command.length() == 5 && command.startsWith("play") &&
+           command[4] >= '1' && command[4] <= '9') {
+    const uint8_t channel = static_cast<uint8_t>(command[4] - '0');
+    Serial.printf("[AUDIO] channel %u %s\n", channel,
+                  speakerAudio.playChannel(channel) ? "requested" : "unavailable");
+  }
   else if (command == "stop") speakerAudio.stop();
-  else if (!command.isEmpty()) Serial.println("[HELP] commands: off end status tone play stop");
+  else if (!command.isEmpty()) Serial.println("[HELP] commands: off end status tone play play1..play9 stop");
 }
 
 void handleSerial() {
@@ -452,6 +632,14 @@ void setup() {
   buttonRawPressed = digitalRead(Config::PUMP_BUTTON_PIN) == LOW;
   buttonStablePressed = buttonRawPressed;
   buttonChangedMs = millis();
+  pinMode(Config::MUSIC_KNOB_PIN, INPUT);
+  analogReadResolution(12);
+  analogSetPinAttenuation(Config::MUSIC_KNOB_PIN, ADC_11db);
+  lightShow.begin();
+  uint32_t initialKnobTotal = 0;
+  for (uint8_t i = 0; i < 16; ++i) initialKnobTotal += analogRead(Config::MUSIC_KNOB_PIN);
+  musicKnobRaw = static_cast<uint16_t>(initialKnobTotal / 16U);
+  musicMotionReferenceRaw = musicKnobRaw;
   drawScreen();
 
   flow.begin(Config::FLOW_PIN);
@@ -466,6 +654,7 @@ void setup() {
   discoverI2cDevices();
   const bool adminReady = admin.begin();
   doorDisplayLinkReady = adminReady && doorDisplayUdp.begin(Config::DOOR_DISPLAY_PORT);
+  speakerAudio.setSpeakerVolumePercent(settings.speakerVolumePercent());
   const bool audioReady = speakerAudio.begin();
 
   Serial.printf("[BOOT] board=%u ext5v=%s sd=%s members=%s settings=%s sessions=%s hub=%s relay=%s rfid=%s admin=%s\n",
@@ -479,9 +668,11 @@ void setup() {
                 doorDisplayLinkReady ? "ready" : "failed");
   Serial.printf("[AUDIO] source=%s file=%s path=%s\n", audioReady ? "ready" : "failed",
                 speakerAudio.fileAvailable() ? "ready" : "missing", Config::AUDIO_PATH);
+  Serial.printf("[MUSIC] knob_pin=%u raw=%u on=%u off=%u\n", Config::MUSIC_KNOB_PIN,
+                musicKnobRaw, Config::MUSIC_KNOB_ON_RAW, Config::MUSIC_KNOB_OFF_RAW);
   Serial.printf("[I2C] pahub_0x%02X=%s relay_0x26=ch%d rfid_0x28=ch%d\n",
                 hubAddress, hubReady?"yes":"no", relayChannel, rfidChannel);
-  Serial.println("[HELP] commands: off end status tone play stop");
+  Serial.println("[HELP] commands: off end status tone play play1..play9 stop");
   screenDirty = true;
 }
 
@@ -489,10 +680,12 @@ void loop() {
   M5.update();
   admin.handle();
   speakerAudio.handle();
+  lightShow.handle(speakerAudio);
   serviceDoorDisplayLink();
   serviceI2cRecovery();
   handleTouch();
   handlePumpButton();
+  handleMusicKnob();
   handleSerial();
   pollFlow();
   pollRfid();

@@ -15,9 +15,41 @@ constexpr uint8_t RELAY_ADDRESS = 0x26;
 
 // Current prototype wiring: protected flow signal into Port B yellow/GPIO26.
 constexpr uint8_t FLOW_PIN = 26;
+// Music selector: Port B white/GPIO36. Potentiometer ends go to 3V3 and GND;
+// never use the Port B 5 V pin as the ADC reference.
+constexpr uint8_t MUSIC_KNOB_PIN = 36;
+constexpr uint16_t MUSIC_KNOB_ON_RAW = 1024;   // About 25% of 12-bit range.
+constexpr uint16_t MUSIC_KNOB_OFF_RAW = 700;   // Hysteresis prevents chatter.
+constexpr uint32_t MUSIC_KNOB_SAMPLE_MS = 20;
+constexpr uint32_t MUSIC_KNOB_RETRY_MS = 3000;
+constexpr uint8_t MUSIC_KNOB_POSITION_COUNT = 10;  // 0=quiet, 1-9=channels.
+constexpr const char* MUSIC_CHANNEL_PATHS[MUSIC_KNOB_POSITION_COUNT] = {
+    "", "/CH1.PCM", "/CH2.PCM", "/CH3.PCM", "/CH4.PCM",
+    "/CH5.PCM", "/CH6.PCM", "/CH7.PCM", "/CH8.PCM", "/CH9.PCM"};
+constexpr const char* MUSIC_CHANNEL_NAMES[MUSIC_KNOB_POSITION_COUNT] = {
+    "Quiet", "Purple Rain", "Africa", "Whose Bed Have Your Boots Been Under",
+    "It's My House", "Dancing Queen", "What a Feeling", "Footloose",
+    "Maniac", "Jesus Built My Hotrod"};
+constexpr uint16_t MUSIC_KNOB_MIN_CALIBRATION_SPAN = 1000;
+constexpr uint16_t MUSIC_KNOB_MIN_POINT_SPACING = 12;
+constexpr uint16_t MUSIC_KNOB_CHANNEL_HYSTERESIS = 28;
+// The installed D-taper pot showed up to ~38 counts of stationary ADC wander.
+// Stay above that floor while remaining far below adjacent calibrated notches.
+constexpr uint16_t MUSIC_KNOB_MOTION_THRESHOLD = 64;
+constexpr uint32_t MUSIC_KNOB_SETTLE_MS = 100;
 // Momentary pump toggle: Port C yellow/GPIO14 to GND, active low.
 constexpr uint8_t PUMP_BUTTON_PIN = 14;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 40;
+
+// Addressable shower lighting: Port C white/GPIO13 drives the 12 V WS2811-style
+// strip data input. Strip power is separate; its negative bus is shared with
+// Tough. Count addressable three-LED groups, not individual LED packages.
+constexpr uint8_t LED_STRIP_PIN = 13;
+constexpr uint16_t LED_STRIP_COUNT = 300;
+constexpr uint8_t LED_STRIP_BRIGHTNESS = 96;
+constexpr uint32_t LED_ANIMATION_INTERVAL_MS = 30;
+constexpr uint8_t LED_RAINBOW_SPACING = 3;
+constexpr uint8_t LED_RAINBOW_SPEED = 2;
 
 // Tough onboard microSD shares the display SPI bus and has its own CS.
 constexpr uint8_t SD_SCK = 18;
@@ -31,9 +63,12 @@ constexpr char LOG_PATH[] = "/PULSES.CSV";
 constexpr char MEMBER_PATH[] = "/MEMBERS.CSV";
 constexpr char SESSION_PATH[] = "/SESSIONS.CSV";
 constexpr char SETTINGS_PATH[] = "/SETTINGS.CSV";
-constexpr char AUDIO_PATH[] = "/MEXICO.PCM";
+// Manual dashboard playback/upload targets channel 1.
+constexpr char AUDIO_PATH[] = "/CH1.PCM";
 constexpr uint32_t AUDIO_SAMPLE_RATE = 44100;
-constexpr uint8_t SPEAKER_VOLUME = 55;
+// Human-facing percentage. SpeakerAudio maps this to the A2DP library's
+// effective 0-127 scale; 43% preserves the previous raw setting of 55.
+constexpr uint8_t DEFAULT_SPEAKER_VOLUME_PERCENT = 43;
 
 constexpr float DEFAULT_ALLOWANCE_GALLONS = 10.0F;
 constexpr float DEFAULT_PULSES_PER_GALLON = 450.0F;

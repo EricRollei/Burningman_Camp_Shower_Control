@@ -8,6 +8,8 @@ hardware:
 - M5Stack Unit 4Relay on a PaHUB port at I2C address `0x26`
 - M5NanoC6 door-display controller with a locally connected SH1107 OLED
 - protected flow-meter pulse signal on GPIO26
+- 10 kOhm music-selector potentiometer on GPIO36 (ADC1)
+- WS2811-style 12 V addressable LED strip on GPIO13
 - onboard microSD card for persistent CSV logging
 - secured local Wi-Fi admin dashboard
 
@@ -65,10 +67,38 @@ page lists registered tags, completed usage and per-shower limits. It supports
 enrollment, editing, disabling, and deletion. Deleting a registration does not
 delete historical usage.
 
+The Shower speaker card provides a 0-100% volume control. Applying a new value
+changes the Bluetooth audio level immediately and saves it in `/SETTINGS.CSV`,
+so the same level is restored after a restart or speaker reconnection.
+
 Calibration starts relay 1 and counts raw pulses while water is dispensed into
 a known-volume container. Enter the measured gallons and stop calibration to
 save the new pulses-per-gallon ratio in `/SETTINGS.CSV`. A 10-minute safety
 timeout stops calibration without changing the saved ratio.
+
+The music-vibe calibration wizard captures ten physical knob positions in
+order: position 0 is quiet and positions 1-9 are music channels. During
+calibration, knob-driven audio is disabled. The firmware rejects points that
+are out of order, too close together, or span less than 1000 ADC counts, and
+only replaces the previous calibration after the complete set is saved to
+`/SETTINGS.CSV`. At runtime, meaningful knob movement immediately replaces the
+current song with synthesized radio static. The static remains continuous
+while the knob moves; after the input settles for 100 ms, the nearest captured
+position locks in with boundary hysteresis. Position 0 becomes quiet and
+positions 1-9 start their assigned songs.
+
+| Position | Track | SD path |
+|---:|---|---|
+| 0 | Quiet | — |
+| 1 | Purple Rain — Prince | `/CH1.PCM` |
+| 2 | Africa — Toto | `/CH2.PCM` |
+| 3 | Whose Bed Have Your Boots Been Under — Shania Twain | `/CH3.PCM` |
+| 4 | It's My House — Diana Ross | `/CH4.PCM` |
+| 5 | Dancing Queen — ABBA | `/CH5.PCM` |
+| 6 | What a Feeling — Irene Cara | `/CH6.PCM` |
+| 7 | Footloose — Kenny Loggins | `/CH7.PCM` |
+| 8 | Maniac — Michael Sembello | `/CH8.PCM` |
+| 9 | Jesus Built My Hotrod — Ministry | `/CH9.PCM` |
 
 The first prototype uses the tag's factory UID as its identity; it does not
 write user data onto the tag. The JSON endpoints under `/api/` intentionally
@@ -109,12 +139,52 @@ Tough RFID prototype. Serial commands are available as a backup to touch:
 | External I2C SDA | GPIO32 |
 | External I2C SCL | GPIO33 |
 | Flow pulse input | GPIO26 |
+| Music selector wiper | GPIO36; potentiometer ends to 3V3 and GND |
 | Pump toggle button | GPIO14 to GND (internal pull-up) |
+| Addressable LED data | GPIO13 (Port C white wire) |
 | microSD CS | GPIO4 |
 | microSD SCK/MISO/MOSI | GPIO18 / GPIO38 / GPIO23 |
 
 GPIO26 uses its internal pull-up as a backup. Keep the already-tested external
 flow-signal protection harness in place; do not connect a 5 V pulse directly.
+
+GPIO36 is the white signal on Port B, beside the flow input on yellow/GPIO26.
+Power the 10 kOhm potentiometer from the Tough EXT board's 3V3 and GND header
+pins. Port B's red wire is 5 V and must not be connected to the potentiometer,
+because that could put 5 V onto the ESP32 ADC. Wire the end terminal reached at
+fully counter-clockwise to GND, the opposite end to 3V3, and the center/wiper
+terminal to GPIO36. The first test channel starts `/MEXICO.PCM` above roughly
+25% and stops below roughly 18% until a knob calibration has been saved. After
+calibration, the ten captured notch positions define quiet and channels 1-9.
+Serial output reports the raw ADC value and selected channel for diagnostics.
+
+The addressable strip runs a continuous moving rainbow. The installed strip is
+a 12 V WS2811-style three-wire strip in GRB order. Adjust `LED_STRIP_COUNT` in
+`include/Config.h` to its number of addressable groups (typically one group per
+three physical LEDs), not its raw LED-package count. Power the strip directly
+from its fused 12 V branch, connect its negative return to the same fuse-block
+negative bus as Tough, and connect Port C's white/GPIO13 wire to the strip data
+input. Never feed 12 V into a Tough GPIO. A 220-470 ohm series resistor at the
+strip data input is recommended. For a long data lead, use a 74HCT-family
+3.3-to-5 V level shifter close to Tough; inject 12 V power along the long strip
+as required by measured current and voltage drop.
+
+Every music channel has a synchronized, song-specific cue show matched to the
+exact installed PCM edit. The PCM byte position is the clock, so restarting a
+song or changing channels cannot create permanent wall-clock drift. Shows use
+distinct palettes and motifs: Purple Rain's violet weather, Africa's sunset and
+rain, Shania's pink-and-gold boot stomps, Diana Ross and ABBA disco treatments,
+Flashdance neon, Footloose kick chases, Maniac's electric pursuit, and Ministry's
+industrial sparks and firestorm. The default moving rainbow appears while no
+song is playing or during radio tuning.
+
+Purple Rain additionally uses a 460-beat timestamp map extracted from the
+installed PCM, plus live bass/mid/treble envelopes calculated from the exact
+samples sent to Bluetooth. This prevents cumulative tempo drift and avoids the
+latency and playa-noise problems of microphone beat detection. Its purple-only
+frequency waves, eight-beat breathing, spectrum bands, expanding rhythm
+ripples, alternating chasers, and layered rainstorms adapt concepts from the
+MIT-licensed M5Stack Audio Visualizer; see `THIRD_PARTY_NOTICES.md`.
 
 The PaHUB channel numbers are intentionally not pinned in configuration; the
 Tough firmware locates relay `0x26` and RFID2 `0x28` at runtime. The SH1107 is

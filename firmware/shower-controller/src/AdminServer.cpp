@@ -24,13 +24,15 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;p
 <section class="card"><h2>Members</h2><div id="members"><small>Loading…</small></div></section>
 <div class="grid"><section class="card"><h2>Flow calibration</h2><p>Place the shower head in a known-volume container, start dispensing, then stop at the measured volume.</p><label for="known">Known volume (gallons)</label><input id="known" type="number" min="0.01" max="100" step="0.01" value="1"><div class="actions"><button id="calStart">Start dispensing</button><button id="calStop" class="secondary">Stop &amp; save</button></div><p id="calStatus"></p></section>
 <section class="card"><h2>Change password</h2><label for="password">New admin password</label><input id="password" type="password" minlength="8" maxlength="64"><div class="actions"><button id="changePassword">Update password</button></div><small>You will be prompted to sign in again.</small></section></div>
-<section class="card"><h2>Shower speaker</h2><p id="audioStatus">Connecting…</p><div class="actions"><button id="tone">Test tone</button><button id="play">Play song</button><button id="stopAudio" class="secondary">Stop</button></div><label for="audioFile">Replace song (44.1 kHz stereo signed 16-bit PCM)</label><input id="audioFile" type="file"><div class="actions"><button id="uploadAudio" class="secondary">Upload audio</button></div><small>The Tough automatically searches for and reconnects to a speaker whose Bluetooth name contains “Select 4 Go”.</small></section>
+<section class="card"><h2>Shower speaker</h2><p id="audioStatus">Connecting…</p><label for="speakerVolume">Volume: <span id="speakerVolumeValue">—</span>%</label><input id="speakerVolume" type="range" min="0" max="100" step="1"><div class="actions"><button id="saveVolume">Set volume</button><button id="tone">Test tone</button><button id="play">Play channel 1</button><button id="stopAudio" class="secondary">Stop</button></div><label for="audioFile">Replace channel 1 (44.1 kHz stereo signed 16-bit PCM)</label><input id="audioFile" type="file"><div class="actions"><button id="uploadAudio" class="secondary">Upload audio</button></div><small>Volume is saved across restarts. The Tough automatically searches for and reconnects to a speaker whose Bluetooth name contains “Select 4 Go”.</small></section>
+<section class="card"><h2>Music vibe selector</h2><p id="knobStatus">Connecting…</p><div class="stat"><span id="knobRaw">—</span><small> / 4095 raw</small></div><p id="knobPoints"></p><div class="actions"><button id="knobCalStart">Start calibration</button><button id="knobCapture">Capture position 0</button><button id="knobCalCancel" class="secondary">Cancel</button></div><small>Ten physical positions: 0 is quiet; 1–9 are music channels. Move the knob to the requested notch and capture each one in order.</small></section>
 <section class="card"><h2>Recent showers</h2><div style="overflow:auto"><table><thead><tr><th>Member</th><th>Gallons</th><th>Duration</th><th>Ended</th></tr></thead><tbody id="sessions"></tbody></table></div></section>
 </main><script>
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function post(path,data={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});const j=await r.json();if(!r.ok)throw Error(j.message||'Request failed');return j}
 async function refresh(){try{const [s,m,h]=await Promise.all(['/api/status','/api/members','/api/sessions'].map(x=>fetch(x).then(r=>r.json())));$('#status').textContent=s.enrollmentPending?`Waiting for ${s.pendingName}'s wristband — tap it now.`:s.message;$('#cal').textContent=Number(s.pulsesPerGallon).toFixed(2);$('#calStatus').textContent=`${s.calibrationMessage} · ${s.calibrationPulses} pulses`;$('#calStart').disabled=s.calibrationActive;$('#calStop').disabled=!s.calibrationActive;
-$('#audioStatus').textContent=`Speaker: ${s.speaker} · ${s.audioPlayback} · song ${s.audioFile?'ready':'not uploaded'}`;$('#tone').disabled=s.speaker!=='connected';$('#play').disabled=s.speaker!=='connected'||!s.audioFile;
+$('#audioStatus').textContent=`Speaker: ${s.speaker} · ${s.audioPlayback} · all channel tracks ${s.audioFile?'ready':'missing'}`;if(document.activeElement!==$('#speakerVolume')){$('#speakerVolume').value=s.speakerVolume;$('#speakerVolumeValue').textContent=s.speakerVolume}$('#tone').disabled=s.speaker!=='connected';$('#play').disabled=s.speaker!=='connected'||!s.audioFile;
+$('#knobRaw').textContent=s.musicKnobRaw;$('#knobStatus').textContent=s.musicCalibrationActive?s.musicCalibrationMessage:`Position ${s.musicChannel} · ${s.musicChannelName} · ${s.musicKnobCalibrated?'calibrated':'using test thresholds'}`;$('#knobPoints').textContent=s.musicPositions.map((x,i)=>`${i}: ${x===null?'—':x}`).join(' · ');$('#knobCalStart').disabled=s.musicCalibrationActive;$('#knobCapture').disabled=!s.musicCalibrationActive;$('#knobCapture').textContent=`Capture position ${s.musicCalibrationNext}`;$('#knobCalCancel').disabled=!s.musicCalibrationActive;
 let total=0;$('#members').innerHTML=m.members.length?m.members.map(x=>{total+=x.gallons;return `<div class="member"><div class="member-head"><div><strong>${esc(x.name)}</strong> ${x.enabled?'':'<span class="disabled">disabled</span>'}<div class="uid">${esc(x.uid)}</div></div><div class="usage">${Number(x.gallons).toFixed(2)} gal · ${x.sessions} showers</div></div><div class="actions"><button class="secondary" onclick="editMember('${x.uid}','${encodeURIComponent(x.name)}',${x.allowance},${x.enabled})">Edit · ${Number(x.allowance).toFixed(1)} gal limit</button><button class="danger" onclick="removeMember('${x.uid}')">Delete</button></div></div>`}).join(''):'<small>No members enrolled.</small>';$('#total').textContent=total.toFixed(2);
 $('#sessions').innerHTML=h.sessions.length?h.sessions.map(x=>`<tr><td>${esc(x.name)}</td><td>${Number(x.gallons).toFixed(2)}</td><td>${Math.round(x.durationMs/1000)}s</td><td>${esc(x.reason)}</td></tr>`).join(''):'<tr><td colspan="4">No completed showers</td></tr>';}catch(e){$('#status').textContent=e.message}}
 $('#arm').onclick=async()=>{try{await post('/api/enroll',{name:$('#name').value.trim()});refresh()}catch(e){alert(e.message)}};$('#cancel').onclick=async()=>{await post('/api/cancel');refresh()};
@@ -38,7 +40,8 @@ async function editMember(uid,name,allowance,enabled){name=decodeURIComponent(na
 async function removeMember(uid){if(!confirm('Delete this wristband registration? Historical usage remains.'))return;await post('/api/delete',{uid});refresh()}
 $('#calStart').onclick=async()=>{try{await post('/api/calibration/start');refresh()}catch(e){alert(e.message)}};$('#calStop').onclick=async()=>{try{await post('/api/calibration/stop',{gallons:$('#known').value});refresh()}catch(e){alert(e.message)}};
 $('#changePassword').onclick=async()=>{try{await post('/api/password',{password:$('#password').value});alert('Password changed. Sign in again with the new password.');location.reload()}catch(e){alert(e.message)}};
-$('#tone').onclick=async()=>{try{await post('/api/audio/tone');refresh()}catch(e){alert(e.message)}};$('#play').onclick=async()=>{try{await post('/api/audio/play');refresh()}catch(e){alert(e.message)}};$('#stopAudio').onclick=async()=>{await post('/api/audio/stop');refresh()};$('#uploadAudio').onclick=async()=>{const f=$('#audioFile').files[0];if(!f)return alert('Choose a PCM file first');const body=new FormData();body.append('audio',f);$('#audioStatus').textContent=`Uploading ${f.name}…`;const r=await fetch('/api/audio/upload',{method:'POST',body});const j=await r.json();if(!r.ok)return alert(j.message||'Upload failed');refresh()};
+$('#speakerVolume').oninput=()=>{$('#speakerVolumeValue').textContent=$('#speakerVolume').value};$('#saveVolume').onclick=async()=>{try{await post('/api/audio/volume',{volume:$('#speakerVolume').value});refresh()}catch(e){alert(e.message)}};$('#tone').onclick=async()=>{try{await post('/api/audio/tone');refresh()}catch(e){alert(e.message)}};$('#play').onclick=async()=>{try{await post('/api/audio/play');refresh()}catch(e){alert(e.message)}};$('#stopAudio').onclick=async()=>{await post('/api/audio/stop');refresh()};$('#uploadAudio').onclick=async()=>{const f=$('#audioFile').files[0];if(!f)return alert('Choose a PCM file first');const body=new FormData();body.append('audio',f);$('#audioStatus').textContent=`Uploading ${f.name}…`;const r=await fetch('/api/audio/upload',{method:'POST',body});const j=await r.json();if(!r.ok)return alert(j.message||'Upload failed');refresh()};
+$('#knobCalStart').onclick=async()=>{try{await post('/api/music/calibration/start');refresh()}catch(e){alert(e.message)}};$('#knobCapture').onclick=async()=>{try{await post('/api/music/calibration/capture');refresh()}catch(e){alert(e.message)}};$('#knobCalCancel').onclick=async()=>{await post('/api/music/calibration/cancel');refresh()};
 refresh();setInterval(refresh,1500);
 </script></body></html>)HTML";
 }
@@ -95,6 +98,34 @@ void AdminServer::reportCalibration(bool active, uint32_t pulses, const String& 
   calibrationMessage_ = message;
 }
 
+bool AdminServer::takeMusicCalibrationStartRequest() {
+  const bool requested = musicCalibrationStartRequested_;
+  musicCalibrationStartRequested_ = false;
+  return requested;
+}
+
+bool AdminServer::takeMusicCalibrationCaptureRequest() {
+  const bool requested = musicCalibrationCaptureRequested_;
+  musicCalibrationCaptureRequested_ = false;
+  return requested;
+}
+
+bool AdminServer::takeMusicCalibrationCancelRequest() {
+  const bool requested = musicCalibrationCancelRequested_;
+  musicCalibrationCancelRequested_ = false;
+  return requested;
+}
+
+void AdminServer::reportMusicKnob(uint16_t raw, int8_t channel,
+                                  bool calibrationActive, uint8_t nextPosition,
+                                  const String& message) {
+  musicKnobRaw_ = raw;
+  musicChannel_ = channel;
+  musicCalibrationActive_ = calibrationActive;
+  musicCalibrationNextPosition_ = nextPosition;
+  musicCalibrationMessage_ = message;
+}
+
 bool AdminServer::authorize() {
   String header = server_.header("Authorization");
   if (header.startsWith("Basic ")) {
@@ -144,6 +175,12 @@ void AdminServer::configureRoutes() {
   server_.on("/api/password", HTTP_POST, [this]() { if (authorize()) changePassword(); });
   server_.on("/api/calibration/start", HTTP_POST, [this]() { if (authorize()) startCalibration(); });
   server_.on("/api/calibration/stop", HTTP_POST, [this]() { if (authorize()) stopCalibration(); });
+  server_.on("/api/music/calibration/start", HTTP_POST,
+             [this]() { if (authorize()) startMusicCalibration(); });
+  server_.on("/api/music/calibration/capture", HTTP_POST,
+             [this]() { if (authorize()) captureMusicCalibration(); });
+  server_.on("/api/music/calibration/cancel", HTTP_POST,
+             [this]() { if (authorize()) cancelMusicCalibration(); });
   server_.on("/api/audio/tone", HTTP_POST, [this]() {
     if (!authorize()) return;
     sendJsonMessage(speakerAudio_.playTestTone() ? 200 : 409,
@@ -160,6 +197,8 @@ void AdminServer::configureRoutes() {
     speakerAudio_.stop();
     sendJsonMessage(200, true, "Audio stopped");
   });
+  server_.on("/api/audio/volume", HTTP_POST,
+             [this]() { if (authorize()) setSpeakerVolume(); });
   server_.on("/api/audio/upload", HTTP_POST,
              [this]() {
                if (!audioUploadAuthorized_) return;
@@ -182,7 +221,27 @@ void AdminServer::sendStatus() {
   body += ",\"calibrationMessage\":\"" + jsonEscape(calibrationMessage_) + "\"";
   body += ",\"speaker\":\"" + String(speakerAudio_.connectionLabel()) + "\"";
   body += ",\"audioPlayback\":\"" + String(speakerAudio_.playbackLabel()) + "\"";
-  body += ",\"audioFile\":" + String(speakerAudio_.fileAvailable() ? "true" : "false") + "}";
+  body += ",\"audioFile\":" + String(speakerAudio_.fileAvailable() ? "true" : "false");
+  body += ",\"speakerVolume\":" + String(speakerAudio_.speakerVolumePercent());
+  body += ",\"musicKnobRaw\":" + String(musicKnobRaw_);
+  body += ",\"musicChannel\":" + String(musicChannel_);
+  const uint8_t safeMusicChannel =
+      musicChannel_ >= 0 && musicChannel_ < Config::MUSIC_KNOB_POSITION_COUNT
+          ? static_cast<uint8_t>(musicChannel_)
+          : 0;
+  body += ",\"musicChannelName\":\"" +
+          jsonEscape(Config::MUSIC_CHANNEL_NAMES[safeMusicChannel]) + "\"";
+  body += ",\"musicKnobCalibrated\":" + String(settings_.musicKnobCalibrated() ? "true" : "false");
+  body += ",\"musicCalibrationActive\":" + String(musicCalibrationActive_ ? "true" : "false");
+  body += ",\"musicCalibrationNext\":" + String(musicCalibrationNextPosition_);
+  body += ",\"musicCalibrationMessage\":\"" + jsonEscape(musicCalibrationMessage_) + "\"";
+  body += ",\"musicPositions\":[";
+  for (uint8_t i = 0; i < Config::MUSIC_KNOB_POSITION_COUNT; ++i) {
+    if (i) body += ',';
+    if (settings_.musicKnobCalibrated()) body += String(settings_.musicKnobPosition(i));
+    else body += "null";
+  }
+  body += "]}";
   server_.send(200, "application/json", body);
 }
 
@@ -222,6 +281,26 @@ void AdminServer::deleteMember() { if (!registry_.remove(server_.arg("uid").c_st
 void AdminServer::changePassword() { if (!settings_.setPassword(server_.arg("password"))) return sendJsonMessage(400, false, "Password must be 8-64 characters"); sendJsonMessage(200, true, "Password changed"); }
 void AdminServer::startCalibration() { calibrationStartRequested_ = true; calibrationMessage_ = "Starting…"; sendJsonMessage(200, true, "Calibration requested"); }
 void AdminServer::stopCalibration() { const float gallons = server_.arg("gallons").toFloat(); if (gallons <= 0.0F) return sendJsonMessage(400, false, "Enter a known volume"); calibrationKnownGallons_ = gallons; calibrationStopRequested_ = true; sendJsonMessage(200, true, "Stop requested"); }
+void AdminServer::startMusicCalibration() { musicCalibrationStartRequested_ = true; musicCalibrationMessage_ = "Starting..."; sendJsonMessage(200, true, "Music knob calibration requested"); }
+void AdminServer::captureMusicCalibration() { if (!musicCalibrationActive_) return sendJsonMessage(409, false, "Start music knob calibration first"); musicCalibrationCaptureRequested_ = true; sendJsonMessage(200, true, "Position capture requested"); }
+void AdminServer::cancelMusicCalibration() { musicCalibrationCancelRequested_ = true; sendJsonMessage(200, true, "Music knob calibration cancelled"); }
+
+void AdminServer::setSpeakerVolume() {
+  const String value = server_.arg("volume");
+  if (value.isEmpty()) return sendJsonMessage(400, false, "Volume must be 0-100");
+  for (size_t i = 0; i < value.length(); ++i) {
+    if (!isDigit(value[i])) return sendJsonMessage(400, false, "Volume must be 0-100");
+  }
+  const long percent = value.toInt();
+  if (percent < 0 || percent > 100) {
+    return sendJsonMessage(400, false, "Volume must be 0-100");
+  }
+  if (!settings_.setSpeakerVolumePercent(static_cast<uint8_t>(percent))) {
+    return sendJsonMessage(503, false, "Could not save volume to SD card");
+  }
+  speakerAudio_.setSpeakerVolumePercent(static_cast<uint8_t>(percent));
+  sendJsonMessage(200, true, String("Speaker volume set to ") + percent + "%");
+}
 
 void AdminServer::handleAudioUpload() {
   HTTPUpload& upload = server_.upload();

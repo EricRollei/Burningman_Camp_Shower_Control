@@ -18,3 +18,7 @@ build/
 # Logs pulled from the device
 logs/
 *.log
+
+# Local audio files (not committed - copyright)
+audio/*
+!audio/.gitkeep
