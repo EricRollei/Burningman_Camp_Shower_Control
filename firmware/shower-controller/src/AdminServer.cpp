@@ -24,17 +24,20 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;p
 <section class="card"><h2>Members</h2><div id="members"><small>Loading…</small></div></section>
 <div class="grid"><section class="card"><h2>Flow calibration</h2><p>Place the shower head in a known-volume container, start dispensing, then stop at the measured volume.</p><label for="known">Known volume (gallons)</label><input id="known" type="number" min="0.01" max="100" step="0.01" value="1"><div class="actions"><button id="calStart">Start dispensing</button><button id="calStop" class="secondary">Stop &amp; save</button></div><p id="calStatus"></p></section>
 <section class="card"><h2>Change password</h2><label for="password">New admin password</label><input id="password" type="password" minlength="8" maxlength="64"><div class="actions"><button id="changePassword">Update password</button></div><small>You will be prompted to sign in again.</small></section></div>
-<section class="card"><h2>Shower speaker</h2><p id="audioStatus">Connecting…</p><label for="speakerVolume">Volume: <span id="speakerVolumeValue">—</span>%</label><input id="speakerVolume" type="range" min="0" max="100" step="1"><div class="actions"><button id="saveVolume">Set volume</button><button id="tone">Test tone</button><button id="play">Play channel 1</button><button id="stopAudio" class="secondary">Stop</button></div><label for="audioFile">Replace channel 1 (44.1 kHz stereo signed 16-bit PCM)</label><input id="audioFile" type="file"><div class="actions"><button id="uploadAudio" class="secondary">Upload audio</button></div><small>Volume is saved across restarts. The Tough automatically searches for and reconnects to a speaker whose Bluetooth name contains “Select 4 Go”.</small></section>
+<section class="card"><h2>Shower speaker</h2><p id="audioStatus">Connecting…</p><label for="speakerVolume">Volume: <span id="speakerVolumeValue">—</span>%</label><input id="speakerVolume" type="range" min="0" max="100" step="1"><div class="actions"><button id="saveVolume">Set volume</button><button id="tone">Test tone</button><button id="play">Play channel 1</button><button id="stopAudio" class="secondary">Stop</button><button id="findSpeaker" class="secondary">Find speaker</button></div><label for="audioFile">Replace channel 1 (44.1 kHz stereo signed 16-bit PCM)</label><input id="audioFile" type="file"><div class="actions"><button id="uploadAudio" class="secondary">Upload audio</button></div><small>Volume is saved across restarts. The Tough automatically searches for and reconnects to a speaker whose Bluetooth name contains “Select 4 Go”.</small></section>
 <section class="card"><h2>Music vibe selector</h2><p id="knobStatus">Connecting…</p><div class="stat"><span id="knobRaw">—</span><small> / 4095 raw</small></div><p id="knobPoints"></p><div class="actions"><button id="knobCalStart">Start calibration</button><button id="knobCapture">Capture position 0</button><button id="knobCalCancel" class="secondary">Cancel</button></div><small>Ten physical positions: 0 is quiet; 1–9 are music channels. Move the knob to the requested notch and capture each one in order.</small></section>
 <section class="card"><h2>Recent showers</h2><div style="overflow:auto"><table><thead><tr><th>Member</th><th>Gallons</th><th>Duration</th><th>Ended</th></tr></thead><tbody id="sessions"></tbody></table></div></section>
+<section class="card"><h2>Controller</h2><p id="health">Connecting…</p><div class="actions"><button id="reboot" class="danger">Reboot controller</button></div><small>Reboot is safe: the pump is shut off first and usage logs live on the SD card.</small></section>
 </main><script>
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function post(path,data={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});const j=await r.json();if(!r.ok)throw Error(j.message||'Request failed');return j}
-async function refresh(){try{const [s,m,h]=await Promise.all(['/api/status','/api/members','/api/sessions'].map(x=>fetch(x).then(r=>r.json())));$('#status').textContent=s.enrollmentPending?`Waiting for ${s.pendingName}'s wristband — tap it now.`:s.message;$('#cal').textContent=Number(s.pulsesPerGallon).toFixed(2);$('#calStatus').textContent=`${s.calibrationMessage} · ${s.calibrationPulses} pulses`;$('#calStart').disabled=s.calibrationActive;$('#calStop').disabled=!s.calibrationActive;
+let busy=false;
+async function refresh(){if(busy)return;busy=true;const ctl=new AbortController();const tm=setTimeout(()=>ctl.abort(),5000);try{const r=await fetch('/api/overview',{signal:ctl.signal});const o=await r.json();const s=o.status,m={members:o.members},h={sessions:o.sessions},hl=o.health;$('#status').textContent=s.enrollmentPending?`Waiting for ${s.pendingName}'s wristband — tap it now.`:s.message;
+$('#health').textContent=`Uptime ${Math.floor(hl.uptimeMs/60000)} min · heap ${Math.round(hl.freeHeap/1024)}k free (low-water ${Math.round(hl.minFreeHeap/1024)}k) · WiFi clients ${hl.wifiClients} · hub ${hl.hub?'ok':'DOWN'} · relay ${hl.relay?'ok':'DOWN'} · RFID ${hl.rfid?'ok':'DOWN'} · SD ${hl.sd?'ok':'DOWN'} · audio underruns ${hl.audioUnderruns}`;$('#cal').textContent=Number(s.pulsesPerGallon).toFixed(2);$('#calStatus').textContent=`${s.calibrationMessage} · ${s.calibrationPulses} pulses`;$('#calStart').disabled=s.calibrationActive;$('#calStop').disabled=!s.calibrationActive;
 $('#audioStatus').textContent=`Speaker: ${s.speaker} · ${s.audioPlayback} · all channel tracks ${s.audioFile?'ready':'missing'}`;if(document.activeElement!==$('#speakerVolume')){$('#speakerVolume').value=s.speakerVolume;$('#speakerVolumeValue').textContent=s.speakerVolume}$('#tone').disabled=s.speaker!=='connected';$('#play').disabled=s.speaker!=='connected'||!s.audioFile;
 $('#knobRaw').textContent=s.musicKnobRaw;$('#knobStatus').textContent=s.musicCalibrationActive?s.musicCalibrationMessage:`Position ${s.musicChannel} · ${s.musicChannelName} · ${s.musicKnobCalibrated?'calibrated':'using test thresholds'}`;$('#knobPoints').textContent=s.musicPositions.map((x,i)=>`${i}: ${x===null?'—':x}`).join(' · ');$('#knobCalStart').disabled=s.musicCalibrationActive;$('#knobCapture').disabled=!s.musicCalibrationActive;$('#knobCapture').textContent=`Capture position ${s.musicCalibrationNext}`;$('#knobCalCancel').disabled=!s.musicCalibrationActive;
 let total=0;$('#members').innerHTML=m.members.length?m.members.map(x=>{total+=x.gallons;return `<div class="member"><div class="member-head"><div><strong>${esc(x.name)}</strong> ${x.enabled?'':'<span class="disabled">disabled</span>'}<div class="uid">${esc(x.uid)}</div></div><div class="usage">${Number(x.gallons).toFixed(2)} gal · ${x.sessions} showers</div></div><div class="actions"><button class="secondary" onclick="editMember('${x.uid}','${encodeURIComponent(x.name)}',${x.allowance},${x.enabled})">Edit · ${Number(x.allowance).toFixed(1)} gal limit</button><button class="danger" onclick="removeMember('${x.uid}')">Delete</button></div></div>`}).join(''):'<small>No members enrolled.</small>';$('#total').textContent=total.toFixed(2);
-$('#sessions').innerHTML=h.sessions.length?h.sessions.map(x=>`<tr><td>${esc(x.name)}</td><td>${Number(x.gallons).toFixed(2)}</td><td>${Math.round(x.durationMs/1000)}s</td><td>${esc(x.reason)}</td></tr>`).join(''):'<tr><td colspan="4">No completed showers</td></tr>';}catch(e){$('#status').textContent=e.message}}
+$('#sessions').innerHTML=h.sessions.length?h.sessions.map(x=>`<tr><td>${esc(x.name)}</td><td>${Number(x.gallons).toFixed(2)}</td><td>${Math.round(x.durationMs/1000)}s</td><td>${esc(x.reason)}</td></tr>`).join(''):'<tr><td colspan="4">No completed showers</td></tr>';}catch(e){$('#status').textContent='Controller not responding — retrying…'}finally{clearTimeout(tm);busy=false}}
 $('#arm').onclick=async()=>{try{await post('/api/enroll',{name:$('#name').value.trim()});refresh()}catch(e){alert(e.message)}};$('#cancel').onclick=async()=>{await post('/api/cancel');refresh()};
 async function editMember(uid,name,allowance,enabled){name=decodeURIComponent(name);const nextName=prompt('Member name',name);if(!nextName)return;const nextAllowance=prompt('Per-shower gallon limit',allowance);if(!nextAllowance)return;const nextEnabled=confirm('Allow this wristband to start showers?');try{await post('/api/member',{uid,name:nextName,allowance:nextAllowance,enabled:nextEnabled?'1':'0'});refresh()}catch(e){alert(e.message)}}
 async function removeMember(uid){if(!confirm('Delete this wristband registration? Historical usage remains.'))return;await post('/api/delete',{uid});refresh()}
@@ -42,7 +45,9 @@ $('#calStart').onclick=async()=>{try{await post('/api/calibration/start');refres
 $('#changePassword').onclick=async()=>{try{await post('/api/password',{password:$('#password').value});alert('Password changed. Sign in again with the new password.');location.reload()}catch(e){alert(e.message)}};
 $('#speakerVolume').oninput=()=>{$('#speakerVolumeValue').textContent=$('#speakerVolume').value};$('#saveVolume').onclick=async()=>{try{await post('/api/audio/volume',{volume:$('#speakerVolume').value});refresh()}catch(e){alert(e.message)}};$('#tone').onclick=async()=>{try{await post('/api/audio/tone');refresh()}catch(e){alert(e.message)}};$('#play').onclick=async()=>{try{await post('/api/audio/play');refresh()}catch(e){alert(e.message)}};$('#stopAudio').onclick=async()=>{await post('/api/audio/stop');refresh()};$('#uploadAudio').onclick=async()=>{const f=$('#audioFile').files[0];if(!f)return alert('Choose a PCM file first');const body=new FormData();body.append('audio',f);$('#audioStatus').textContent=`Uploading ${f.name}…`;const r=await fetch('/api/audio/upload',{method:'POST',body});const j=await r.json();if(!r.ok)return alert(j.message||'Upload failed');refresh()};
 $('#knobCalStart').onclick=async()=>{try{await post('/api/music/calibration/start');refresh()}catch(e){alert(e.message)}};$('#knobCapture').onclick=async()=>{try{await post('/api/music/calibration/capture');refresh()}catch(e){alert(e.message)}};$('#knobCalCancel').onclick=async()=>{await post('/api/music/calibration/cancel');refresh()};
-refresh();setInterval(refresh,1500);
+$('#findSpeaker').onclick=async()=>{try{await post('/api/speaker/search');refresh()}catch(e){alert(e.message)}};
+$('#reboot').onclick=async()=>{if(!confirm('Reboot the shower controller?'))return;try{await post('/api/reboot')}catch(e){}$('#status').textContent='Rebooting — the page will reconnect in about 20 seconds.'};
+refresh();setInterval(refresh,2000);
 </script></body></html>)HTML";
 }
 
@@ -53,12 +58,18 @@ AdminServer::AdminServer(MemberRegistry& registry, const PulseStorage& pulseStor
       settings_(settings), speakerAudio_(speakerAudio) {}
 
 bool AdminServer::begin() {
+  if (started_) return true;
   WiFi.mode(WIFI_AP);
   WiFi.setSleep(false);
   if (!WiFi.softAP(Config::WIFI_AP_NAME, Config::WIFI_AP_PASSWORD)) return false;
-  const char* headers[] = {"Authorization"};
-  server_.collectHeaders(headers, 1);
-  configureRoutes();
+  // begin() is retried from the main loop if the AP fails at boot, so the
+  // route table must only be registered once.
+  if (!routesConfigured_) {
+    const char* headers[] = {"Authorization"};
+    server_.collectHeaders(headers, 1);
+    configureRoutes();
+    routesConfigured_ = true;
+  }
   server_.begin();
   started_ = true;
   return true;
@@ -126,6 +137,24 @@ void AdminServer::reportMusicKnob(uint16_t raw, int8_t channel,
   musicCalibrationMessage_ = message;
 }
 
+void AdminServer::reportHardware(bool hubReady, bool relayReady, bool rfidReady) {
+  hubReady_ = hubReady;
+  relayReady_ = relayReady;
+  rfidReady_ = rfidReady;
+}
+
+bool AdminServer::takeRebootRequest() {
+  const bool requested = rebootRequested_;
+  rebootRequested_ = false;
+  return requested;
+}
+
+bool AdminServer::takeSpeakerSearchRequest() {
+  const bool requested = speakerSearchRequested_;
+  speakerSearchRequested_ = false;
+  return requested;
+}
+
 bool AdminServer::authorize() {
   String header = server_.header("Authorization");
   if (header.startsWith("Basic ")) {
@@ -149,23 +178,36 @@ bool AdminServer::authorize() {
 
 void AdminServer::configureRoutes() {
   server_.on("/", HTTP_GET, [this]() { if (authorize()) server_.send_P(200, "text/html", ADMIN_PAGE); });
-  server_.on("/api/status", HTTP_GET, [this]() { if (authorize()) sendStatus(); });
-  server_.on("/api/members", HTTP_GET, [this]() { if (authorize()) sendMembers(); });
-  server_.on("/api/sessions", HTTP_GET, [this]() {
+  server_.on("/api/status", HTTP_GET, [this]() { if (authorize()) server_.send(200, "application/json", statusJson()); });
+  server_.on("/api/members", HTTP_GET, [this]() { if (authorize()) server_.send(200, "application/json", "{\"members\":" + membersJson() + "}"); });
+  server_.on("/api/sessions", HTTP_GET, [this]() { if (authorize()) server_.send(200, "application/json", "{\"sessions\":" + sessionsJson() + "}"); });
+  server_.on("/api/health", HTTP_GET, [this]() { if (authorize()) server_.send(200, "application/json", healthJson()); });
+  server_.on("/api/overview", HTTP_GET, [this]() {
     if (!authorize()) return;
-    String body = "{\"sessions\":[";
-    for (size_t i = 0; i < sessions_.recentCount(); ++i) {
-      if (i) body += ',';
-      const auto& record = sessions_.recentAt(i);
-      const char* name = registry_.nameFor(record.uid);
-      body += "{\"uid\":\"" + jsonEscape(record.uid) + "\",\"name\":\"";
-      body += jsonEscape(name ? name : "Deleted member");
-      body += "\",\"gallons\":" + String(record.gallons, 4);
-      body += ",\"durationMs\":" + String(record.endMs - record.startMs);
-      body += ",\"reason\":\"" + jsonEscape(record.reason) + "\"}";
-    }
-    body += "]}";
+    // One request per poll instead of three keeps the single-threaded
+    // WebServer responsive and the admin page resilient.
+    String body;
+    body.reserve(2048 + registry_.count() * 192 + sessions_.recentCount() * 128);
+    body += "{\"status\":";
+    body += statusJson();
+    body += ",\"health\":";
+    body += healthJson();
+    body += ",\"members\":";
+    body += membersJson();
+    body += ",\"sessions\":";
+    body += sessionsJson();
+    body += '}';
     server_.send(200, "application/json", body);
+  });
+  server_.on("/api/reboot", HTTP_POST, [this]() {
+    if (!authorize()) return;
+    rebootRequested_ = true;
+    sendJsonMessage(200, true, "Rebooting");
+  });
+  server_.on("/api/speaker/search", HTTP_POST, [this]() {
+    if (!authorize()) return;
+    speakerSearchRequested_ = true;
+    sendJsonMessage(200, true, "Searching for speaker");
   });
   server_.on("/api/enroll", HTTP_POST, [this]() { if (authorize()) armEnrollment(); });
   server_.on("/api/cancel", HTTP_POST, [this]() { if (authorize()) cancelEnrollment(); });
@@ -211,8 +253,48 @@ void AdminServer::configureRoutes() {
   server_.onNotFound([this]() { if (authorize()) sendJsonMessage(404, false, "Not found"); });
 }
 
-void AdminServer::sendStatus() {
-  String body = "{\"station\":\"" + String(Config::STATION_NAME) + "\",\"ip\":\"" + address();
+String AdminServer::sessionsJson() const {
+  String body;
+  body.reserve(sessions_.recentCount() * 128 + 4);
+  body += '[';
+  for (size_t i = 0; i < sessions_.recentCount(); ++i) {
+    if (i) body += ',';
+    const auto& record = sessions_.recentAt(i);
+    const char* name = registry_.nameFor(record.uid);
+    body += "{\"uid\":\"" + jsonEscape(record.uid) + "\",\"name\":\"";
+    body += jsonEscape(name ? name : "Deleted member");
+    body += "\",\"gallons\":" + String(record.gallons, 4);
+    body += ",\"durationMs\":" + String(record.endMs - record.startMs);
+    body += ",\"reason\":\"" + jsonEscape(record.reason) + "\"}";
+  }
+  body += ']';
+  return body;
+}
+
+String AdminServer::healthJson() const {
+  String body;
+  body.reserve(256);
+  body += "{\"uptimeMs\":" + String(millis());
+  body += ",\"freeHeap\":" + String(ESP.getFreeHeap());
+  body += ",\"minFreeHeap\":" + String(ESP.getMinFreeHeap());
+  body += ",\"maxAllocHeap\":" + String(ESP.getMaxAllocHeap());
+  body += ",\"freePsram\":" + String(ESP.getFreePsram());
+  body += ",\"wifiClients\":" + String(WiFi.softAPgetStationNum());
+  body += ",\"hub\":" + String(hubReady_ ? "true" : "false");
+  body += ",\"relay\":" + String(relayReady_ ? "true" : "false");
+  body += ",\"rfid\":" + String(rfidReady_ ? "true" : "false");
+  body += ",\"sd\":" + String((pulseStorage_.healthy() && sessions_.healthy() &&
+                               settings_.healthy() && registry_.healthy())
+                                  ? "true" : "false");
+  body += ",\"audioUnderruns\":" + String(speakerAudio_.bufferUnderruns());
+  body += '}';
+  return body;
+}
+
+String AdminServer::statusJson() const {
+  String body;
+  body.reserve(1024);
+  body += "{\"station\":\"" + String(Config::STATION_NAME) + "\",\"ip\":\"" + address();
   body += "\",\"enrollmentPending\":" + String(enrollmentPending_ ? "true" : "false");
   body += ",\"pendingName\":\"" + jsonEscape(pendingName_) + "\",\"lastUid\":\"" + jsonEscape(lastUid_);
   body += "\",\"message\":\"" + jsonEscape(lastMessage_) + "\",\"pulsesPerGallon\":" + String(settings_.pulsesPerGallon(), 4);
@@ -242,11 +324,13 @@ void AdminServer::sendStatus() {
     else body += "null";
   }
   body += "]}";
-  server_.send(200, "application/json", body);
+  return body;
 }
 
-void AdminServer::sendMembers() {
-  String body = "{\"members\":[";
+String AdminServer::membersJson() const {
+  String body;
+  body.reserve(registry_.count() * 192 + 4);
+  body += '[';
   for (size_t i = 0; i < registry_.count(); ++i) {
     if (i) body += ',';
     const char* uid = registry_.uidAt(i);
@@ -257,8 +341,8 @@ void AdminServer::sendMembers() {
     body += ",\"sessions\":" + String(sessions_.sessionsFor(uid));
     body += ",\"pulses\":" + String(static_cast<unsigned long long>(pulseStorage_.totalFor(uid))) + '}';
   }
-  body += "]}";
-  server_.send(200, "application/json", body);
+  body += ']';
+  return body;
 }
 
 void AdminServer::armEnrollment() {
@@ -321,10 +405,12 @@ void AdminServer::handleAudioUpload() {
   } else if (upload.status == UPLOAD_FILE_END) {
     if (audioUploadFile_) audioUploadFile_.close();
     if (audioUploadFailed_) SD.remove(Config::AUDIO_PATH);
+    speakerAudio_.refreshFileAvailability();
   } else if (upload.status == UPLOAD_FILE_ABORTED) {
     if (audioUploadFile_) audioUploadFile_.close();
     SD.remove(Config::AUDIO_PATH);
     audioUploadFailed_ = true;
+    speakerAudio_.refreshFileAvailability();
   }
 }
 

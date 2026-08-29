@@ -63,12 +63,31 @@ constexpr uint32_t SD_FREQUENCY = 10000000;
 
 constexpr uint32_t LOG_INTERVAL_MS = 2000;
 constexpr char LOG_PATH[] = "/PULSES.CSV";
+// Per-tag totals snapshot so boot only replays the log tail, not the whole
+// file (which grows all week).
+constexpr char PULSE_SNAPSHOT_PATH[] = "/PULSETOT.CSV";
 constexpr char MEMBER_PATH[] = "/MEMBERS.CSV";
 constexpr char SESSION_PATH[] = "/SESSIONS.CSV";
 constexpr char SETTINGS_PATH[] = "/SETTINGS.CSV";
 // Manual dashboard playback/upload targets channel 1.
 constexpr char AUDIO_PATH[] = "/CH1.PCM";
 constexpr uint32_t AUDIO_SAMPLE_RATE = 44100;
+// Song PCM is staged into RAM by the main loop so the Bluetooth task never
+// touches the SD card (the SD/SPI stack is not safe across tasks). 128 KiB of
+// PSRAM holds ~740 ms of 44.1 kHz stereo audio.
+constexpr size_t AUDIO_BUFFER_BYTES = 131072;
+constexpr size_t AUDIO_REFILL_CHUNK_BYTES = 8192;
+
+// Bluetooth discovery is radio-hostile to the WiFi AP: scan continuously only
+// for a short window, then retry one inquiry round on a slow interval (or on
+// demand from the admin page).
+constexpr uint32_t BT_DISCOVERY_ACTIVE_MS = 2UL * 60UL * 1000UL;
+constexpr uint32_t BT_DISCOVERY_RETRY_INTERVAL_MS = 5UL * 60UL * 1000UL;
+
+// Loop-task watchdog: a wedged main loop reboots instead of staying dead.
+constexpr uint32_t WDT_TIMEOUT_S = 20;
+constexpr uint32_t HEALTH_LOG_INTERVAL_MS = 30000;
+constexpr uint32_t ADMIN_RETRY_INTERVAL_MS = 30000;
 // Human-facing percentage. SpeakerAudio maps this to the A2DP library's
 // effective 0-127 scale; 43% preserves the previous raw setting of 55.
 constexpr uint8_t DEFAULT_SPEAKER_VOLUME_PERCENT = 43;

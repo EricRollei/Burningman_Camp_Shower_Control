@@ -30,11 +30,17 @@ class AdminServer {
   bool takeMusicCalibrationCancelRequest();
   void reportMusicKnob(uint16_t raw, int8_t channel, bool calibrationActive,
                        uint8_t nextPosition, const String& message);
+  void reportHardware(bool hubReady, bool relayReady, bool rfidReady);
+  bool takeRebootRequest();
+  bool takeSpeakerSearchRequest();
+  bool started() const { return started_; }
 
  private:
   void configureRoutes();
-  void sendStatus();
-  void sendMembers();
+  String statusJson() const;
+  String membersJson() const;
+  String sessionsJson() const;
+  String healthJson() const;
   void armEnrollment();
   void cancelEnrollment();
   void renameMember();
@@ -77,6 +83,12 @@ class AdminServer {
   int8_t musicChannel_ = 0;
   uint8_t musicCalibrationNextPosition_ = 0;
   String musicCalibrationMessage_ = "Ready to calibrate";
+  bool hubReady_ = false;
+  bool relayReady_ = false;
+  bool rfidReady_ = false;
+  bool rebootRequested_ = false;
+  bool speakerSearchRequested_ = false;
+  bool routesConfigured_ = false;
   File audioUploadFile_;
   bool audioUploadAuthorized_ = false;
   bool audioUploadFailed_ = false;
