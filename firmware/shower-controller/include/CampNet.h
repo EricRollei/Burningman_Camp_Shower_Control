@@ -40,6 +40,52 @@ class CampNetLink {
   void markUsageDirty() { usageDirty_ = true; }
   void markMembersDirty() { membersDirty_ = true; }
   void markLimitsDirty() { limitsDirty_ = true; }
+  void markAuthDirty() { authDirty_ = true; }
+
+  // ---- Single admin page: telemetry, recent sessions, remote commands ----
+  // The AdminServer fills a TelemetryPacket / RecentPacket for this station
+  // every loop; CampNet stamps the header, broadcasts on a timer and
+  // immediately when the content (ignoring uptime/heap counters) changes.
+  void setLocalTelemetry(const CampNet::TelemetryPacket& telemetry);
+  void setLocalRecent(const CampNet::RecentPacket& recent);
+
+  struct RemoteTelemetry {
+    bool valid = false;
+    uint32_t receivedMs = 0;
+    CampNet::TelemetryPacket packet;
+  };
+  struct RemoteRecent {
+    bool valid = false;
+    uint32_t receivedMs = 0;
+    CampNet::RecentPacket packet;
+  };
+  const RemoteTelemetry& telemetry(uint8_t stationId) const;
+  const RemoteRecent& recent(uint8_t stationId) const;
+
+  // Outgoing command to another station. Returns the request nonce (0 if the
+  // link is down or the queue is full). CampNet retries until an ACK arrives
+  // or it times out; poll commandResult(nonce) from the HTTP layer.
+  struct CommandResult {
+    enum class State : uint8_t { Unknown, Pending, Done, Timeout };
+    State state = State::Unknown;
+    uint8_t status = CampNet::ACK_REJECTED;  // AckStatus once Done
+    char message[48] = {0};
+  };
+  uint32_t sendCommand(uint8_t target, uint8_t action, const uint8_t* args, uint8_t argLen);
+  CommandResult commandResult(uint32_t nonce) const;
+
+  // Incoming, already-authenticated and de-duplicated command addressed to
+  // this station. The AdminServer executes it and must answer with
+  // respondToCommand() (that sends the ACK).
+  struct IncomingCommand {
+    uint8_t fromStation = 0;
+    uint8_t action = 0;
+    uint8_t argLen = 0;
+    uint8_t args[CampNet::COMMAND_ARG_BYTES] = {0};
+    uint32_t nonce = 0;
+  };
+  bool takeIncomingCommand(IncomingCommand& out);
+  void respondToCommand(const IncomingCommand& command, uint8_t status, const char* message);
 
   size_t peerCount() const;
   bool peerOnline(uint8_t stationId) const;
@@ -92,6 +138,7 @@ class CampNetLink {
   bool usageDirty_ = true;
   bool membersDirty_ = true;
   bool limitsDirty_ = true;
+  bool authDirty_ = true;
   uint32_t bootMs_ = 0;
   uint32_t lastStatusMs_ = 0;
   uint32_t lastUsageMs_ = 0;

@@ -16,7 +16,11 @@ namespace CampNet {
 // soft-AP is pinned to it; the NanoC6 pins its idle STA interface to it.
 constexpr uint8_t CHANNEL = 1;
 constexpr uint16_t MAGIC = 0xCA5E;
-constexpr uint8_t PROTOCOL_VERSION = 1;
+constexpr uint8_t PROTOCOL_VERSION = 2;
+// Shared secret for authenticating COMMAND / ACK / AUTH packets (HMAC-SHA256
+// truncated to 16 bytes). Change before field use, together with the Wi-Fi
+// password; every station and sign must be built with the same value.
+constexpr char SECRET[] = "camp-shower-campnet-secret";
 constexpr uint8_t MAX_PAYLOAD = 250;
 // Station ids are 1..MAX_STATIONS. 0 is reserved for "unknown".
 constexpr uint8_t MAX_STATIONS = 8;
@@ -25,7 +29,66 @@ constexpr uint8_t NAME_BYTES = 33;  // NUL-terminated member name
 
 enum Role : uint8_t { ROLE_SHOWER = 0, ROLE_WATER_FILL = 1, ROLE_RV_FILL = 2, ROLE_COUNT = 3 };
 enum DoorState : uint8_t { DOOR_OPEN = 0, DOOR_IN_USE = 1, DOOR_UNAVAILABLE = 2 };
-enum PacketType : uint8_t { PKT_STATUS = 1, PKT_USAGE = 2, PKT_MEMBERS = 3, PKT_LIMITS = 4 };
+enum PacketType : uint8_t {
+  PKT_STATUS = 1,
+  PKT_USAGE = 2,
+  PKT_MEMBERS = 3,
+  PKT_LIMITS = 4,
+  PKT_TELEMETRY = 5,  // rich per-station state for the single admin page
+  PKT_RECENT = 6,     // last few completed sessions
+  PKT_COMMAND = 7,    // admin action addressed to one station (authenticated)
+  PKT_ACK = 8,        // result of a COMMAND (authenticated)
+  PKT_AUTH = 9,       // admin password salt+hash, versioned (authenticated)
+};
+
+// Remote admin actions. Arguments are a short byte string (see each action).
+enum CommandAction : uint8_t {
+  CMD_ENROLL = 1,             // args: member name (UTF-8, <= 32 bytes)
+  CMD_CANCEL_ENROLL = 2,
+  CMD_CALIBRATION_START = 3,
+  CMD_CALIBRATION_STOP = 4,   // args: float knownGallons
+  CMD_MUSIC_CAL_START = 5,
+  CMD_MUSIC_CAL_CAPTURE = 6,
+  CMD_MUSIC_CAL_CANCEL = 7,
+  CMD_AUDIO_TONE = 8,
+  CMD_AUDIO_PLAY = 9,
+  CMD_AUDIO_STOP = 10,
+  CMD_AUDIO_VOLUME = 11,      // args: uint8_t percent
+  CMD_SPEAKER_SEARCH = 12,
+  CMD_REBOOT = 13,
+  CMD_END_SESSION = 14,       // ends the active session; pump goes off
+};
+
+enum AckStatus : uint8_t { ACK_OK = 0, ACK_REJECTED = 1, ACK_UNAUTHORIZED = 2, ACK_UNSUPPORTED = 3 };
+
+// End-of-session reasons, compact form of the SESSIONS.CSV reason strings.
+enum SessionReason : uint8_t {
+  REASON_OTHER = 0, REASON_BUTTON = 1, REASON_LIMIT = 2, REASON_TIMEOUT = 3,
+  REASON_HANDOFF = 4, REASON_RELAY_ERROR = 5, REASON_SD_ERROR = 6,
+  REASON_SERIAL = 7, REASON_REBOOT = 8,
+};
+
+// TelemetryPacket.flags bits.
+constexpr uint8_t TELEM_SD_OK = 1 << 0;
+constexpr uint8_t TELEM_HUB_OK = 1 << 1;
+constexpr uint8_t TELEM_RELAY_OK = 1 << 2;
+constexpr uint8_t TELEM_RFID_OK = 1 << 3;
+constexpr uint8_t TELEM_CALIBRATION_ACTIVE = 1 << 4;
+constexpr uint8_t TELEM_SPEAKER_CONNECTED = 1 << 5;
+constexpr uint8_t TELEM_AUDIO_FILE = 1 << 6;
+constexpr uint8_t TELEM_MUSIC_CAL_ACTIVE = 1 << 7;
+// TelemetryPacket.features bits.
+constexpr uint8_t FEATURE_MUSIC = 1 << 0;
+constexpr uint8_t FEATURE_LEDS = 1 << 1;
+constexpr uint8_t FEATURE_DOOR_SIGN = 1 << 2;
+constexpr uint8_t FEATURE_ENROLL_PENDING = 1 << 3;
+constexpr uint8_t FEATURE_MUSIC_CALIBRATED = 1 << 4;
+constexpr uint8_t FEATURE_PUMP_ON = 1 << 5;
+
+constexpr uint8_t COMMAND_ARG_BYTES = 40;
+constexpr uint8_t MAC_BYTES = 16;
+constexpr uint8_t RECENT_ENTRIES_PER_PACKET = 8;
+constexpr uint8_t MUSIC_POSITIONS = 10;
 
 #pragma pack(push, 1)
 struct Header {
@@ -91,6 +154,84 @@ struct LimitsPacket {
   float gallons[ROLE_COUNT];
   uint16_t minutes[ROLE_COUNT];
 };
+
+// Everything the admin page needs to render one station's cards. Sent by
+// every Tough every 2 s and immediately when something the page shows changes.
+struct TelemetryPacket {
+  Header header;
+  uint32_t uptimeS;
+  uint32_t freeHeap;
+  uint32_t minFreeHeap;
+  uint32_t audioUnderruns;
+  uint32_t calibrationPulses;
+  float pulsesPerGallon;
+  float sessionGallons;
+  float sessionLimit;
+  uint16_t musicKnobRaw;
+  uint16_t musicPositions[MUSIC_POSITIONS];
+  uint8_t flags;      // TELEM_* bits
+  uint8_t features;   // FEATURE_* bits
+  uint8_t doorState;
+  uint8_t wifiClients;
+  uint8_t speakerVolume;
+  int8_t musicChannel;
+  uint8_t musicCalNext;
+  uint8_t reserved;
+  char activeName[33];
+  char pendingName[33];
+  char speaker[16];         // SpeakerAudio::connectionLabel()
+  char playback[24];        // SpeakerAudio::playbackLabel()
+  char calibrationMessage[36];
+  char message[32];         // AdminServer lastMessage_
+};
+
+struct RecentEntry {
+  uint8_t uidLen;
+  uint8_t uid[UID_BYTES];
+  float gallons;
+  uint16_t durationS;
+  uint8_t reason;  // SessionReason
+};
+struct RecentPacket {
+  Header header;
+  uint8_t count;
+  RecentEntry entries[RECENT_ENTRIES_PER_PACKET];
+};
+
+// Admin action for one station. mac = HMAC-SHA256(SECRET, bytes of the packet
+// from `header.stationId` through `args`, i.e. everything after the seq field
+// and before `mac`) truncated to 16 bytes. Receivers drop packets with a bad
+// mac and remember recent (sender, nonce) pairs to reject replays/duplicates.
+struct CommandPacket {
+  Header header;
+  uint8_t target;    // station id that must execute this
+  uint8_t action;    // CommandAction
+  uint8_t argLen;
+  uint8_t reserved;
+  uint32_t nonce;    // random per request; retries reuse it
+  uint8_t args[COMMAND_ARG_BYTES];
+  uint8_t mac[MAC_BYTES];
+};
+
+struct AckPacket {
+  Header header;
+  uint8_t target;    // station id of the original sender
+  uint8_t status;    // AckStatus
+  uint8_t reserved[2];
+  uint32_t nonce;    // echoes CommandPacket.nonce
+  char message[48];
+  uint8_t mac[MAC_BYTES];
+};
+
+// Admin password (salted SHA-256 as stored in SETTINGS.CSV), version-numbered
+// like limits. Authenticated the same way as CommandPacket.
+struct AuthPacket {
+  Header header;
+  uint32_t version;
+  uint8_t salt[16];
+  uint8_t hash[32];
+  uint8_t mac[MAC_BYTES];
+};
 #pragma pack(pop)
 
 static_assert(sizeof(Header) == 8, "header layout");
@@ -100,6 +241,33 @@ static_assert(sizeof(StatusPacket) <= MAX_PAYLOAD, "status packet too large");
 static_assert(sizeof(UsagePacket) <= MAX_PAYLOAD, "usage packet too large");
 static_assert(sizeof(MembersPacket) <= MAX_PAYLOAD, "members packet too large");
 static_assert(sizeof(LimitsPacket) <= MAX_PAYLOAD, "limits packet too large");
+static_assert(sizeof(TelemetryPacket) <= MAX_PAYLOAD, "telemetry packet too large");
+static_assert(sizeof(RecentPacket) <= MAX_PAYLOAD, "recent packet too large");
+static_assert(sizeof(CommandPacket) <= MAX_PAYLOAD, "command packet too large");
+static_assert(sizeof(AckPacket) <= MAX_PAYLOAD, "ack packet too large");
+static_assert(sizeof(AuthPacket) <= MAX_PAYLOAD, "auth packet too large");
+
+inline const char* sessionReasonName(uint8_t reason) {
+  switch (reason) {
+    case REASON_BUTTON: return "BUTTON";
+    case REASON_LIMIT: return "LIMIT";
+    case REASON_TIMEOUT: return "TIMEOUT";
+    case REASON_HANDOFF: return "HANDOFF";
+    case REASON_RELAY_ERROR: return "RELAY_ERROR";
+    case REASON_SD_ERROR: return "SD_ERROR";
+    case REASON_SERIAL: return "SERIAL";
+    case REASON_REBOOT: return "REBOOT";
+    default: return "OTHER";
+  }
+}
+
+inline uint8_t sessionReasonCode(const char* reason) {
+  if (reason == nullptr) return REASON_OTHER;
+  for (uint8_t code = REASON_BUTTON; code <= REASON_REBOOT; ++code) {
+    if (strcmp(reason, sessionReasonName(code)) == 0) return code;
+  }
+  return REASON_OTHER;
+}
 
 inline bool headerValid(const uint8_t* data, int length) {
   if (data == nullptr || length < static_cast<int>(sizeof(Header))) return false;

@@ -424,3 +424,29 @@ const CampNetLink::Peer& CampNetLink::peer(uint8_t stationId) const {
   static Peer empty;
   return stationId <= CampNet::MAX_STATIONS ? peers_[stationId] : empty;
 }
+
+// ---- Single admin page support: stubs, implemented by the transport work ----
+void CampNetLink::setLocalTelemetry(const CampNet::TelemetryPacket& telemetry) { (void)telemetry; }
+void CampNetLink::setLocalRecent(const CampNet::RecentPacket& recent) { (void)recent; }
+const CampNetLink::RemoteTelemetry& CampNetLink::telemetry(uint8_t stationId) const {
+  static RemoteTelemetry empty;
+  (void)stationId;
+  return empty;
+}
+const CampNetLink::RemoteRecent& CampNetLink::recent(uint8_t stationId) const {
+  static RemoteRecent empty;
+  (void)stationId;
+  return empty;
+}
+uint32_t CampNetLink::sendCommand(uint8_t target, uint8_t action, const uint8_t* args, uint8_t argLen) {
+  (void)target; (void)action; (void)args; (void)argLen;
+  return 0;
+}
+CampNetLink::CommandResult CampNetLink::commandResult(uint32_t nonce) const {
+  (void)nonce;
+  return CommandResult();
+}
+bool CampNetLink::takeIncomingCommand(IncomingCommand& out) { (void)out; return false; }
+void CampNetLink::respondToCommand(const IncomingCommand& command, uint8_t status, const char* message) {
+  (void)command; (void)status; (void)message;
+}
