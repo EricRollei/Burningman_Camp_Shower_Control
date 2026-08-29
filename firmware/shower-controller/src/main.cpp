@@ -1,6 +1,8 @@
 #include <M5Unified.h>
 #include <Wire.h>
 #include <WiFiUdp.h>
+#include <WiFi.h>
+#include <esp_task_wdt.h>
 
 #include "AdminServer.h"
 #include "Config.h"
@@ -575,6 +577,44 @@ void handleMusicKnob() {
   }
 }
 
+void serviceReliability() {
+  const uint32_t now = millis();
+
+  // The admin AP retries at runtime instead of staying dead until a reboot.
+  static uint32_t lastAdminRetryMs = 0;
+  if (!admin.started() && now - lastAdminRetryMs >= Config::ADMIN_RETRY_INTERVAL_MS) {
+    lastAdminRetryMs = now;
+    if (admin.begin()) {
+      doorDisplayLinkReady = doorDisplayUdp.begin(Config::DOOR_DISPLAY_PORT);
+      Serial.printf("[WEB] admin server recovered at http://%s/\n",
+                    admin.address().c_str());
+    } else {
+      Serial.println("[WEB] admin server retry failed");
+    }
+  }
+
+  admin.reportHardware(hubReady, relayReady, rfidReady);
+  if (admin.takeSpeakerSearchRequest()) speakerAudio.requestDiscovery();
+  if (admin.takeRebootRequest()) {
+    Serial.println("[SYSTEM] reboot requested from admin page");
+    if (sessionActive()) endSession("REBOOT");
+    stopPump();
+    admin.handle();  // let the HTTP response flush before restarting
+    delay(250);
+    ESP.restart();
+  }
+
+  static uint32_t lastHealthLogMs = 0;
+  if (now - lastHealthLogMs >= Config::HEALTH_LOG_INTERVAL_MS) {
+    lastHealthLogMs = now;
+    Serial.printf("[HEALTH] uptime=%lus heap=%u min_heap=%u max_alloc=%u psram=%u wifi_clients=%u underruns=%lu\n",
+                  static_cast<unsigned long>(now / 1000), ESP.getFreeHeap(),
+                  ESP.getMinFreeHeap(), ESP.getMaxAllocHeap(), ESP.getFreePsram(),
+                  WiFi.softAPgetStationNum(),
+                  static_cast<unsigned long>(speakerAudio.bufferUnderruns()));
+  }
+}
+
 void printStatus() {
   Serial.printf("[STATE] state=%u uid=%s pulses=%lu gallons=%.3f limit=%.2f relay=0x%02X sd=%s hub=%s@0x%02X relay_ch=%d rfid=%s rfid_ch=%d calibration=%.2f\n",
                 static_cast<unsigned>(screenState), sessionActive() ? activeUid : "NONE",
@@ -674,15 +714,23 @@ void setup() {
                 hubAddress, hubReady?"yes":"no", relayChannel, rfidChannel);
   Serial.println("[HELP] commands: off end status tone play play1..play9 stop");
   screenDirty = true;
+
+  // If the main loop ever wedges (I2C bus hang, SD stall, deadlock), reboot
+  // instead of sitting dead until someone power-cycles the station. Only this
+  // task is subscribed; radio and system tasks keep their own supervision.
+  esp_task_wdt_init(Config::WDT_TIMEOUT_S, true);
+  esp_task_wdt_add(nullptr);
 }
 
 void loop() {
+  esp_task_wdt_reset();
   M5.update();
   admin.handle();
   speakerAudio.handle();
   lightShow.handle(speakerAudio);
   serviceDoorDisplayLink();
   serviceI2cRecovery();
+  serviceReliability();
   handleTouch();
   handlePumpButton();
   handleMusicKnob();

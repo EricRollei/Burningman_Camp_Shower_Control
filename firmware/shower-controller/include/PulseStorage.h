@@ -27,6 +27,9 @@ class PulseStorage {
   bool append(const char* uid, uint32_t delta, uint64_t total,
               const char* event);
   void restoreTotals();
+  bool loadSnapshot(uint64_t& replayOffset);
+  void writeSnapshot();
+  void replayLog(uint64_t fromOffset);
 
   TagTotal totals_[MAX_TAGS];
   size_t tagCount_ = 0;

@@ -67,6 +67,27 @@ page lists registered tags, completed usage and per-shower limits. It supports
 enrollment, editing, disabling, and deletion. Deleting a registration does not
 delete historical usage.
 
+## Reliability
+
+- Song PCM is staged through a PSRAM ring buffer by the main loop, so the
+  Bluetooth task never touches the SD card (the SD/SPI stack is not safe
+  across tasks; concurrent access was the leading cause of hard freezes).
+- The main loop is subscribed to the ESP32 task watchdog: if it ever wedges
+  for 20 seconds the station reboots itself instead of staying dead.
+- Bluetooth speaker discovery scans continuously for only the first two
+  minutes, then retries one round every five minutes so inquiry scanning does
+  not starve the Wi-Fi access point. The dashboard's **Find speaker** button
+  forces a fresh scan window.
+- The dashboard polls a single `/api/overview` endpoint with a timeout and an
+  in-flight guard, so a slow controller degrades to "retrying" instead of a
+  frozen page. `/api/health` exposes uptime, heap, Wi-Fi client count, and
+  hardware status; the same data is printed to serial every 30 seconds as
+  `[HEALTH]` lines. The **Controller** card includes a remote reboot button.
+- If the Wi-Fi access point fails to start, it is retried every 30 seconds at
+  runtime.
+- `/PULSETOT.CSV` snapshots per-tag totals at each session end so boot replays
+  only the tail of `/PULSES.CSV` rather than the whole week's log.
+
 The Shower speaker card provides a 0-100% volume control. Applying a new value
 changes the Bluetooth audio level immediately and saves it in `/SETTINGS.CSV`,
 so the same level is restored after a restart or speaker reconnection.
