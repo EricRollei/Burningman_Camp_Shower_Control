@@ -37,9 +37,12 @@ constexpr uint16_t MUSIC_KNOB_CHANNEL_HYSTERESIS = 28;
 // Stay above that floor while remaining far below adjacent calibrated notches.
 constexpr uint16_t MUSIC_KNOB_MOTION_THRESHOLD = 64;
 constexpr uint32_t MUSIC_KNOB_SETTLE_MS = 100;
-// Momentary pump toggle: Port C yellow/GPIO14 to GND, active low.
+// Momentary shower button: Port C yellow/GPIO14 to GND, active low.
+// First press starts the water; second press ends the shower.
 constexpr uint8_t PUMP_BUTTON_PIN = 14;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 40;
+// How long the usage summary stays on screen after a shower ends.
+constexpr uint32_t SUMMARY_DISPLAY_MS = 10000;
 
 // Addressable shower lighting: Port C white/GPIO13 drives the 12 V WS2811-style
 // strip data input. Strip power is separate; its negative bus is shared with

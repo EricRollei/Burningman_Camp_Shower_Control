@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Camp Shower — M5 Tough UI mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Alfa+Slab+One&family=Orbitron:wght@700;900&family=Righteous&family=Fredoka:wght@600;700&family=Inter:wght@700;900&family=Limelight&display=swap" rel="stylesheet">
+<style>
+  /* ------------------------------------------------------------------ page */
+  body { margin:0; background:#151515; color:#ddd; font-family: Inter, system-ui, sans-serif; }
+  .page { max-width: 1440px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 28px; margin: 0 0 6px; color:#fff; }
+  h2 { font-size: 22px; margin: 48px 0 4px; color:#fff; }
+  .lead { color:#aaa; margin: 0 0 8px; max-width: 900px; line-height: 1.45; }
+  .meta { color:#888; font-size: 13px; margin: 0 0 16px; }
+  .meta b { color:#ccc; }
+  .row { display:flex; flex-wrap:wrap; gap: 28px 20px; }
+  .cell { display:flex; flex-direction:column; gap: 8px; }
+  .cell .label { font-size: 12px; color:#999; letter-spacing: .08em; text-transform: uppercase; }
+  .notes { background:#1e1e1e; border:1px solid #2c2c2c; border-radius: 10px; padding: 16px 20px; margin-top: 18px; max-width: 900px; line-height:1.5; font-size: 14px; }
+  .notes h3 { margin: 0 0 6px; font-size: 15px; color:#fff; }
+  .notes ul { margin: 6px 0 0 18px; padding:0; }
+  code { background:#2a2a2a; padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+
+  /* ------------------------------------------------- the 320×240 device */
+  .screen {
+    position: relative; width: 320px; height: 240px; overflow: hidden;
+    transform: scale(1.5); transform-origin: top left; box-sizing: border-box; border-radius: 4px;
+    box-shadow: 0 0 0 6px #000, 0 0 0 7px #333;
+  }
+  .shell { width: 480px; height: 360px; margin: 6px 0 0 6px; }
+  .screen * { box-sizing: border-box; }
+  .abs { position:absolute; left:0; right:0; text-align:center; }
+  .bar { position:absolute; left: 20px; right: 20px; height: 14px; border-radius: 7px; overflow: hidden; }
+  .bar i { display:block; height:100%; }
+  .dot { position:absolute; width: 8px; height: 8px; border-radius: 50%; }
+
+  /* ====================================================== A. BIG TOP CIRCUS */
+  .circus { background:
+      radial-gradient(ellipse 140% 60% at 50% -20%, transparent 62%, rgba(0,0,0,.35) 63%),
+      repeating-conic-gradient(from 0deg at 50% -30%, #B3202A 0deg 9deg, #F4E4C1 9deg 18deg);
+    background-color:#8E1B22; font-family: 'Alfa Slab One', serif; color:#F9EBD0; }
+  .circus::before { /* red body with gold frame */
+    content:""; position:absolute; inset: 22px 8px 8px 8px; background:#8E1B22;
+    border: 3px solid #F2C14E; border-radius: 12px; box-shadow: inset 0 0 0 2px #8E1B22, inset 0 0 0 4px #F2C14E; }
+  .circus .bulbs { position:absolute; inset: 24px 10px 10px 10px; border-radius: 12px;
+    background:
+      radial-gradient(circle, #FFF2B0 0 2px, #F2A93B 2.5px, transparent 3.2px) 0 0/ 16px 8px repeat-x,
+      radial-gradient(circle, #FFF2B0 0 2px, #F2A93B 2.5px, transparent 3.2px) 0 100%/ 16px 8px repeat-x,
+      radial-gradient(circle, #FFF2B0 0 2px, #F2A93B 2.5px, transparent 3.2px) 0 0/ 8px 16px repeat-y,
+      radial-gradient(circle, #FFF2B0 0 2px, #F2A93B 2.5px, transparent 3.2px) 100% 0/ 8px 16px repeat-y; }
+  .circus .hdr { top: 4px; font-family: 'Rye', serif; font-size: 13px; color:#F2C14E; letter-spacing:.06em; text-shadow: 1px 1px 0 #3a0a0d; }
+  .circus .title { font-family: 'Rye', serif; font-size: 26px; line-height: 1.05; color:#F9EBD0; text-shadow: 2px 2px 0 #3a0a0d; }
+  .circus .huge  { font-size: 64px; line-height: 1; color:#F2C14E; text-shadow: 3px 3px 0 #3a0a0d; }
+  .circus .huge small { font-size: 22px; margin-left: 4px; }
+  .circus .sub   { font-size: 14px; color:#F9EBD0; letter-spacing:.04em; }
+  .circus .cta   { left: 22px; right: 22px; padding: 7px 0 6px; background:#F2C14E; color:#3a0a0d; font-family:'Rye', serif; font-size: 15px; border-radius: 6px; border: 2px solid #3a0a0d; box-shadow: 0 3px 0 #3a0a0d; }
+  .circus .cta.stop { background:#F9EBD0; }
+  .circus .bar { background:#3a0a0d; border: 2px solid #F2C14E; }
+  .circus .bar i { background: repeating-linear-gradient(-45deg, #F2C14E 0 8px, #E39A2B 8px 16px); }
+  .circus .bar.warn i { background: repeating-linear-gradient(-45deg, #FF6B2B 0 8px, #F9EBD0 8px 16px); }
+  .circus .ticket { position:absolute; left: 30px; right: 30px; top: 96px; height: 96px; background:#F9EBD0; color:#3a0a0d; border-radius: 8px; text-align:center;
+    -webkit-mask: radial-gradient(circle at 0 50%, transparent 8px, #000 8.5px), radial-gradient(circle at 100% 50%, transparent 8px, #000 8.5px); -webkit-mask-composite: source-in; mask-composite: intersect; }
+  .circus .ticket .n { font-size: 44px; line-height: 1; margin-top: 8px; }
+  .circus .ticket .n small { font-size: 18px; }
+  .circus .ticket .t { font-family:'Rye', serif; font-size: 15px; margin-top: 4px; }
+  .circus .denied .title { color:#FFB3A7; }
+
+  /* ========================================================== B. PLAYA NEON */
+  .neon { background: #07071A; font-family: 'Orbitron', sans-serif; color:#EAF6FF; }
+  .neon::before { /* horizon glow + static grid floor (no animation) */
+    content:""; position:absolute; left:0; right:0; bottom:0; height: 70px;
+    background:
+      linear-gradient(to top, rgba(255,43,214,.35), transparent 90%),
+      repeating-linear-gradient(to top, rgba(25,230,255,.55) 0 1px, transparent 1px 12px),
+      repeating-linear-gradient(to right, rgba(25,230,255,.45) 0 1px, transparent 1px 28px);
+    -webkit-mask: linear-gradient(to top, #000, transparent); }
+  .neon .hdr { top: 6px; font-size: 11px; letter-spacing:.3em; color:#19E6FF; }
+  .neon .hdr::after { content:""; display:block; margin: 5px auto 0; width: 260px; height: 2px; background: linear-gradient(90deg, transparent, #FF2BD6, #19E6FF, transparent); }
+  .neon .title { font-size: 26px; font-weight: 900; line-height: 1.05; color:#fff; text-shadow: 0 0 8px #FF2BD6, 0 0 16px #FF2BD6; }
+  .neon .huge  { font-size: 72px; font-weight: 900; line-height: 1; color:#fff; text-shadow: 0 0 10px #19E6FF, 0 0 22px #19E6FF; }
+  .neon .huge small { font-size: 20px; margin-left: 6px; color:#19E6FF; text-shadow:none; }
+  .neon .sub   { font-size: 13px; letter-spacing:.12em; color:#B8C9E0; }
+  .neon .cta   { left: 20px; right: 20px; padding: 8px 0; border: 2px solid #19E6FF; border-radius: 4px; color:#19E6FF; font-size: 13px; letter-spacing:.14em; font-weight:700; box-shadow: 0 0 8px #19E6FF, inset 0 0 8px rgba(25,230,255,.4); background: rgba(7,7,26,.85); }
+  .neon .cta.stop { border-color:#FF2BD6; color:#FF2BD6; box-shadow: 0 0 8px #FF2BD6, inset 0 0 8px rgba(255,43,214,.4); }
+  .neon .bar { background:#1a1a3a; border:1px solid #19E6FF; }
+  .neon .bar i { background: linear-gradient(90deg, #19E6FF, #FF2BD6); }
+  .neon .bar.warn i { background: linear-gradient(90deg, #FFB300, #FF2B2B); }
+  .neon .denied .title { color:#FF5C5C; text-shadow: 0 0 8px #FF2B2B, 0 0 16px #FF2B2B; }
+
+  /* ================================================== C. DESERT MOTEL RETRO */
+  .motel { background:#FFF1CF; font-family: 'Righteous', sans-serif; color:#3B2A1A; }
+  .motel::before { /* sun + stripes */
+    content:""; position:absolute; inset:0;
+    background:
+      radial-gradient(circle at 50% 118%, #F9A03F 0 120px, transparent 121px),
+      repeating-linear-gradient(0deg, transparent 0 14px, rgba(31,122,140,.10) 14px 16px);
+    opacity:.9; }
+  .motel .hdr { top: 0; height: 30px; line-height: 30px; background:#1F7A8C; color:#FFF1CF; font-size: 14px; letter-spacing:.18em; }
+  .motel .title { font-size: 28px; line-height: 1.05; color:#1F7A8C; }
+  .motel .huge  { font-size: 74px; line-height: 1; color:#3B2A1A; }
+  .motel .huge small { font-size: 22px; color:#F26419; }
+  .motel .sub   { font-size: 14px; color:#3B2A1A; }
+  .motel .cta   { left: 20px; right: 20px; padding: 8px 0; background:#F26419; color:#FFF1CF; font-size: 15px; letter-spacing:.06em; border-radius: 22px; box-shadow: 0 3px 0 #a3400e; }
+  .motel .cta.stop { background:#1F7A8C; box-shadow: 0 3px 0 #0f4650; }
+  .motel .bar { background:#e6d3a8; }
+  .motel .bar i { background:#1F7A8C; }
+  .motel .bar.warn i { background:#F26419; }
+  .motel .denied .title { color:#C0392B; }
+
+  /* ================================================ D. BLACKOUT HIGH-CONTRAST */
+  .black { background:#000; font-family: Inter, system-ui, sans-serif; color:#fff; }
+  .black .hdr { top: 8px; font-size: 12px; font-weight: 700; letter-spacing:.2em; color:#8a8a8a; }
+  .black .title { font-size: 30px; font-weight: 900; line-height: 1; letter-spacing:-.01em; }
+  .black .huge  { font-size: 92px; font-weight: 900; line-height: .95; letter-spacing:-.03em; }
+  .black .huge small { font-size: 22px; font-weight: 800; margin-left: 4px; color:#8a8a8a; }
+  .black .sub   { font-size: 15px; font-weight: 700; color:#bbb; }
+  .black .cta   { left: 0; right: 0; bottom: 0; padding: 12px 0; font-size: 16px; font-weight: 900; letter-spacing:.04em; background:#1DB954; color:#000; }
+  .black .cta.stop { background:#FF3B30; color:#fff; }
+  .black .bar { background:#222; }
+  .black .bar i { background:#1DB954; }
+  .black .bar.warn i { background:#FF9F0A; }
+  .black .idle .title { color:#fff; }
+  .black .denied { background:#FF3B30; color:#fff; }
+  .black .denied .hdr, .black .denied .sub { color:#fff; }
+  .black .accent { color:#1DB954; }
+  .black .warn-txt { color:#FF9F0A; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Camp Shower — M5Stack Tough screen mockups</h1>
+  <p class="lead">Four looks for the same five screens. Everything is drawn at the real <b>320×240</b> and shown at 1.5× so you can judge legibility at arm's length. No animations anywhere — every screen is a single static redraw. Touch is gone: the only inputs are the <b>wristband</b> and the <b>one button</b>.</p>
+  <p class="meta"><b>Flow:</b> Idle → tap wristband → Logged in (<i>press button to start</i>) → Showering (<i>press button when done</i>) → Summary (10 s) → Idle. Tapping a different wristband during someone's shower ends theirs and logs the new person in.</p>
+
+  <div id="themes"></div>
+
+  <div class="notes">
+    <h3>Legibility rules baked into every theme</h3>
+    <ul>
+      <li>One <b>hero</b> element per screen (name, gallons, or the instruction) at ≥ 60 px; everything else is secondary.</li>
+      <li>The button instruction is always the bottom band, always full width, always the same place — so people learn where to look.</li>
+      <li>Green = water on / go, amber = running low, red = stop / denied. Colors never carry meaning alone; the words change too.</li>
+      <li>Gallons show 2 decimals while showering (people like watching it tick), 1 decimal on the summary.</li>
+      <li>Warning state (bar ≥ 85 %) swaps the bar color and adds a “X gal left” line — no flashing.</li>
+    </ul>
+    <h3 style="margin-top:14px">What the Tough can actually draw</h3>
+    <ul>
+      <li>Built-in M5GFX fonts: FreeSans/FreeSerif/FreeMono Bold (9–24 pt), Orbitron Light 24/32, DejaVu up to 72 px, 7-segment <code>Font7</code>, and big digits <code>Font8</code> (75 px). The Neon and Blackout looks map straight onto Orbitron / DejaVu / Font8.</li>
+      <li>Rye / Alfa Slab (circus) and Righteous (motel) aren't built in, but any TTF can be converted to a <code>.vlw</code> bitmap font and loaded from the SD card. Headline sizes only — a couple of sizes per font is cheap.</li>
+      <li>Marquee bulbs, stripes, tickets, the sun, the grid floor — all plain rect/circle/line primitives, drawn once per screen. No flicker because they're not redrawn on flow updates (only the number and bar are).</li>
+    </ul>
+    <h3 style="margin-top:14px">Things I'd like your call on</h3>
+    <ul>
+      <li>Camp name / slogan on the idle screen (currently "CAMP SHOWER").</li>
+      <li>Do you want the person's name big on the logged-in screen ("HOWDY, COLTON") — fun, but long names will need to shrink.</li>
+      <li>Gallons only, or gallons + liters?</li>
+      <li>Which theme — or a mash-up (e.g. circus frame with Blackout-size numbers).</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+// One set of screen contents, restyled per theme.
+const SCREENS = [
+  { key:'idle', label:'1 · Idle', html: `
+      <div class="abs hdr">CAMP SHOWER</div>
+      <div class="abs title" style="top:52px">TAP YOUR<br>WRISTBAND</div>
+      <div class="abs sub" style="top:132px">to start a shower</div>
+      <div class="abs cta" style="bottom:22px">SHOWER OPEN</div>` },
+  { key:'login', label:'2 · Logged in (button not pressed yet)', html: `
+      <div class="abs hdr">CAMP SHOWER</div>
+      <div class="abs sub" style="top:38px">HOWDY</div>
+      <div class="abs title" style="top:56px">COLTON</div>
+      <div class="abs sub" style="top:104px">10.0 gallons allowed</div>
+      <div class="abs cta" style="bottom:22px">PRESS BUTTON TO START WATER</div>` },
+  { key:'active', label:'3 · Showering', html: `
+      <div class="abs hdr">COLTON · 04:12</div>
+      <div class="abs huge" style="top:40px">3.42<small>GAL</small></div>
+      <div class="bar" style="top:126px"><i style="width:34%"></i></div>
+      <div class="abs sub" style="top:146px">6.6 gal left · water on</div>
+      <div class="abs cta stop" style="bottom:22px">PRESS BUTTON WHEN DONE</div>` },
+  { key:'warn', label:'3b · Showering — running low', html: `
+      <div class="abs hdr">COLTON · 11:48</div>
+      <div class="abs huge" style="top:40px">9.10<small>GAL</small></div>
+      <div class="bar warn" style="top:126px"><i style="width:91%"></i></div>
+      <div class="abs sub warn-txt" style="top:146px">0.9 GAL LEFT — WRAP IT UP</div>
+      <div class="abs cta stop" style="bottom:22px">PRESS BUTTON WHEN DONE</div>` },
+  { key:'summary', label:'4 · Summary (10 s)', html: `
+      <div class="abs hdr">CAMP SHOWER</div>
+      <div class="abs title" style="top:34px">ALL DONE!</div>
+      <div class="ticket"><div class="abs n" style="position:static">3.4<small> GAL</small></div><div class="t">6 MIN 40 SEC</div></div>
+      <div class="abs huge no-ticket" style="top:70px;font-size:56px">3.4<small>GAL</small></div>
+      <div class="abs sub no-ticket" style="top:134px">6 min 40 sec · see ya, Colton</div>
+      <div class="abs cta" style="bottom:22px">THANKS FOR SHOWERING</div>` },
+  { key:'denied', label:'5 · Denied', html: `
+      <div class="abs hdr">CAMP SHOWER</div>
+      <div class="abs title" style="top:60px">NOT<br>AUTHORIZED</div>
+      <div class="abs sub" style="top:134px">see a camp admin</div>
+      <div class="abs cta" style="bottom:22px">WRISTBAND NOT RECOGNIZED</div>` },
+];
+
+const THEMES = [
+  { cls:'circus', name:'A · Big Top', blurb:'Red & cream sunburst, gold marquee bulbs around a framed stage, slab-serif numbers. The summary is printed on a ticket. Circus type (Rye / Alfa Slab) would be a converted bitmap font on the SD card.', ticket:true },
+  { cls:'neon',   name:'B · Playa Neon', blurb:'Near-black with magenta / cyan glow, Orbitron numerals and a static grid horizon. Closest to what the Tough can draw with its built-in Orbitron font. Glow is faked with a 1-px darker outline on device.' },
+  { cls:'motel',  name:'C · Desert Motel', blurb:'Cream, teal and orange with a half-sun. Light background is actually the most readable in direct playa daylight; the dark themes win at night.' },
+  { cls:'black',  name:'D · Blackout', blurb:'Pure black, huge white numbers, one accent color per state and a full-width colored band for the instruction. Least “themed”, most legible from across the room. Font8 digits on device.' },
+];
+
+const root = document.getElementById('themes');
+for (const t of THEMES) {
+  const h = document.createElement('h2'); h.textContent = t.name; root.appendChild(h);
+  const p = document.createElement('p'); p.className = 'lead'; p.textContent = t.blurb; root.appendChild(p);
+  const row = document.createElement('div'); row.className = 'row';
+  for (const s of SCREENS) {
+    const cell = document.createElement('div'); cell.className = 'cell';
+    const lab = document.createElement('div'); lab.className = 'label'; lab.textContent = s.label;
+    const scr = document.createElement('div'); scr.className = `screen ${t.cls} ${s.key}`;
+    scr.innerHTML = (t.cls === 'circus' ? '<div class="bulbs"></div>' : '') + s.html;
+    // Summary: circus uses the ticket, others use the plain big number.
+    scr.querySelectorAll(t.ticket ? '.no-ticket' : '.ticket').forEach(e => e.remove());
+    if (s.key === 'denied') scr.classList.add('denied');
+    const shell = document.createElement('div'); shell.className = 'shell'; shell.appendChild(scr);
+    cell.append(lab, shell); row.appendChild(cell);
+  }
+  root.appendChild(row);
+}
+</script>
+</body>
+</html>

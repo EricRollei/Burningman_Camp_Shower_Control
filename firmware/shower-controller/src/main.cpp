@@ -56,6 +56,7 @@ uint16_t musicMotionReferenceRaw = 0;
 uint16_t musicCalibrationPositions[Config::MUSIC_KNOB_POSITION_COUNT] = {0};
 float activeAllowance = 0.0F;
 float summaryGallons = 0.0F;
+uint32_t summaryElapsedMs = 0;
 bool rfidReady = false;
 bool relayReady = false;
 bool hubReady = false;
@@ -181,14 +182,14 @@ void drawScreen() {
     M5.Display.fillRoundRect(18, 140, 284, 14, 7, TFT_DARKGREY);
     const float ratio = constrain(gallonsFor(sessionPulses) / activeAllowance, 0.0F, 1.0F);
     M5.Display.fillRoundRect(18, 140, static_cast<int>(284 * ratio), 14, 7, ratio > .85F ? TFT_ORANGE : TFT_GREEN);
-    drawCentered(relays.isOn(Config::PUMP_RELAY) ? "WATER ON" : "WATER PAUSED", 157, 1,
-                 relays.isOn(Config::PUMP_RELAY) ? TFT_GREEN : TFT_ORANGE);
-    M5.Display.fillRoundRect(24, 174, 272, 52, 12, TFT_MAROON);
-    M5.Display.drawRoundRect(24, 174, 272, 52, 12, TFT_RED);
+    const bool pumpOn = relays.isOn(Config::PUMP_RELAY);
+    drawCentered(pumpOn ? "WATER ON" : "READY", 157, 1, pumpOn ? TFT_GREEN : TFT_ORANGE);
+    M5.Display.fillRoundRect(24, 174, 272, 52, 12, pumpOn ? TFT_MAROON : 0x0320);
+    M5.Display.drawRoundRect(24, 174, 272, 52, 12, pumpOn ? TFT_RED : TFT_GREEN);
     M5.Display.setTextDatum(middle_center);
     M5.Display.setTextSize(2);
-    M5.Display.setTextColor(TFT_WHITE, TFT_MAROON);
-    M5.Display.drawString("END SHOWER", 160, 200);
+    M5.Display.setTextColor(TFT_WHITE, pumpOn ? TFT_MAROON : 0x0320);
+    M5.Display.drawString(pumpOn ? "PRESS BUTTON TO FINISH" : "PRESS BUTTON TO START", 160, 200);
   } else if (screenState == ScreenState::CALIBRATION) {
     drawHeader("ADMIN CALIBRATION", TFT_ORANGE);
     drawCentered("DISPENSING", 48, 3, TFT_ORANGE);
@@ -201,8 +202,15 @@ void drawScreen() {
     drawHeader("CAMP SHOWER");
     drawCentered(messageTitle, 66, 3, messageTitle == "NOT AUTHORIZED" ? TFT_ORANGE : TFT_CYAN);
     drawCentered(messageBody, 122, 2, TFT_WHITE);
-    if (summaryGallons > 0.0F) drawCentered(String(summaryGallons, 2) + " gallons used", 166, 2, TFT_GREEN);
-    drawCentered("Returning to ready…", 215, 1, TFT_LIGHTGREY);
+    if (summaryElapsedMs > 0) {
+      drawCentered(String(summaryGallons, 2) + " gallons used", 160, 2, TFT_GREEN);
+      const uint32_t seconds = summaryElapsedMs / 1000UL;
+      char elapsed[32];
+      snprintf(elapsed, sizeof(elapsed), "%lu min %02lu sec",
+               static_cast<unsigned long>(seconds / 60UL), static_cast<unsigned long>(seconds % 60UL));
+      drawCentered(elapsed, 188, 2, TFT_WHITE);
+    }
+    drawCentered("Returning to ready…", 220, 1, TFT_LIGHTGREY);
   }
   M5.Display.endWrite();
   screenDirty = false;
@@ -253,6 +261,7 @@ void endSession(const char* reason) {
   const bool rawLogged = flushPulses() && pulseStorage.endTag(activeUid);
   const uint32_t endMs = millis();
   summaryGallons = gallonsFor(sessionPulses);
+  summaryElapsedMs = endMs - sessionStartMs;
   const bool sessionLogged = sessions.append(sessionStartMs, endMs, activeUid,
                                              sessionPulses, summaryGallons,
                                              activeAllowance, reason);
@@ -262,18 +271,18 @@ void endSession(const char* reason) {
                 reason, logged ? "yes" : "no");
   activeUid[0] = '\0'; activeName[0] = '\0'; pendingPulses = 0; sessionPulses = 0;
   setMessage(logged ? "SHOWER COMPLETE" : "LOGGING ERROR",
-             logged ? "Thank you!" : "Tell a camp admin", 5000);
+             logged ? "Thank you!" : "Tell a camp admin", Config::SUMMARY_DISPLAY_MS);
 }
 
 void startSession(const String& uid) {
   const char* name = members.nameFor(uid.c_str());
   if (name == nullptr || !members.enabledFor(uid.c_str())) {
-    summaryGallons = 0.0F;
+    summaryGallons = 0.0F; summaryElapsedMs = 0;
     setMessage("NOT AUTHORIZED", name ? "Wristband disabled" : "See a camp admin");
     return;
   }
   if (!pulseStorage.healthy() || !sessions.healthy() || !settings.healthy()) {
-    summaryGallons = 0.0F;
+    summaryGallons = 0.0F; summaryElapsedMs = 0;
     setMessage("UNAVAILABLE", "Usage storage needs service");
     return;
   }
@@ -281,7 +290,7 @@ void startSession(const String& uid) {
   if (!relayReady || !relays.set(Config::PUMP_RELAY, false)) {
     relayReady = false;
     stopPump();
-    summaryGallons = 0.0F;
+    summaryGallons = 0.0F; summaryElapsedMs = 0;
     setMessage("UNAVAILABLE", "Pump control needs service");
     return;
   }
@@ -329,10 +338,16 @@ void pollRfid() {
   if (repeat || calibrationActive) return;
   if (sessionActive()) {
     if (uid == activeUid) return;
-    setMessage("SHOWER BUSY", "Finish the current shower");
-    screenState = ScreenState::ACTIVE;
-    screenDirty = true;
-    return;
+    const char* name = members.nameFor(uid.c_str());
+    if (name == nullptr || !members.enabledFor(uid.c_str())) {
+      // An unknown tag must not end someone else's shower; just show the denial.
+      setMessage("NOT AUTHORIZED", name ? "Wristband disabled" : "See a camp admin");
+      screenState = ScreenState::ACTIVE;
+      screenDirty = true;
+      return;
+    }
+    // Someone forgot to log out: close their shower and log the new member in.
+    endSession("HANDOFF");
   }
   startSession(uid);
 }
@@ -387,12 +402,6 @@ void handleCalibration() {
   }
 }
 
-void handleTouch() {
-  const auto& touch = M5.Touch.getDetail();
-  if (!touch.wasPressed()) return;
-  if (screenState == ScreenState::ACTIVE && touch.y >= 166) endSession("BUTTON");
-}
-
 void handlePumpButton() {
   const bool pressed = digitalRead(Config::PUMP_BUTTON_PIN) == LOW;
   if (pressed != buttonRawPressed) {
@@ -413,14 +422,20 @@ void handlePumpButton() {
     return;
   }
 
-  const bool turnOn = !relays.isOn(Config::PUMP_RELAY);
-  if (!relayReady || !relays.set(Config::PUMP_RELAY, turnOn)) {
+  if (relays.isOn(Config::PUMP_RELAY)) {
+    // Second press: the shower is over. endSession() turns the pump off.
+    Serial.println("[BUTTON] finish shower");
+    endSession("BUTTON");
+    return;
+  }
+  // First press: start the water.
+  if (!relayReady || !relays.set(Config::PUMP_RELAY, true)) {
     relayReady = false;
     Serial.println("[BUTTON] pump relay write failed");
     endSession("RELAY_ERROR");
     return;
   }
-  Serial.printf("[BUTTON] pump=%s\n", turnOn ? "on" : "off");
+  Serial.println("[BUTTON] pump=on");
   screenDirty = true;
 }
 
@@ -683,7 +698,6 @@ void loop() {
   lightShow.handle(speakerAudio);
   serviceDoorDisplayLink();
   serviceI2cRecovery();
-  handleTouch();
   handlePumpButton();
   handleMusicKnob();
   handleSerial();
@@ -699,6 +713,7 @@ void loop() {
   }
   if (screenState == ScreenState::MESSAGE && static_cast<int32_t>(millis() - messageUntilMs) >= 0) {
     summaryGallons = 0.0F;
+    summaryElapsedMs = 0;
     screenState = ScreenState::IDLE;
     screenDirty = true;
   }
