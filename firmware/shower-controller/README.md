@@ -15,16 +15,27 @@ hardware:
 
 ## Session behavior
 
+The Tough touchscreen is not used; the person showering only interacts with
+the RFID reader and the single momentary button on GPIO14.
+
 1. At boot, all four relays are explicitly commanded OFF.
-2. An enabled, enrolled wristband opens a shower session with relay 1 off.
-3. The momentary button on GPIO14 toggles the pump during that session; button
+2. An enabled, enrolled wristband opens a shower session with relay 1 off and
+   shows `PRESS BUTTON TO START`.
+3. The first button press starts the water. The screen switches to
+   `PRESS BUTTON TO FINISH` and shows live gallons against the member's limit.
+4. The second button press ends the shower and turns the pump off. Button
    presses are ignored when no member is authenticated.
-4. Flow is displayed in gallons using the saved station calibration.
-5. The shower ends from the touchscreen, its per-user gallon limit (10 gallons
-   by default), or a 20-minute safety timeout.
-6. Every exit path commands all relays OFF and appends a completed record to
+5. After a shower ends the screen shows the gallons used and elapsed time for
+   10 seconds (`SUMMARY_DISPLAY_MS`), then returns to the ready screen.
+6. If a different enrolled wristband is tapped while a session is open (someone
+   forgot to log out), the open shower is ended and logged with reason
+   `HANDOFF`, and the new member is logged in. Unknown or disabled wristbands
+   never end someone else's shower; they only show `NOT AUTHORIZED`.
+7. The shower also ends at its per-user gallon limit (10 gallons by default)
+   or a 20-minute safety timeout.
+8. Every exit path commands all relays OFF and appends a completed record to
    `/SESSIONS.CSV`; `/PULSES.CSV` remains the raw audit log.
-7. Unknown and disabled wristbands are denied.
+9. Unknown and disabled wristbands are denied.
 
 The NanoC6 and external OLED form the public availability sign. The Nano joins
 the Tough's local Wi-Fi access point and requests status twice per second. While
@@ -32,8 +43,8 @@ available, the OLED uses an inverted bright background and rotates through
 short messages such as `HEY STINKY`, `SHOWER TIME`, and `SCRUB A DUB`. During
 an authorized shower session it displays `IN USE`, even when the pump is
 paused. It fails safe to `OFFLINE` after three seconds without a valid reply.
-The Tough's built-in touchscreen keeps the operational UI shown to the person
-using the controller.
+The Tough's built-in display shows the operational UI to the person using the
+controller; its touch layer is not used.
 
 Both downstream I2C devices are discovered by address at boot, so their
 PaHUB ports may be rearranged without rebuilding the firmware. Missing devices
@@ -147,7 +158,7 @@ pio device monitor
 ```
 
 The configured USB port and verified upload speed come from the existing
-Tough RFID prototype. Serial commands are available as a backup to touch:
+Tough RFID prototype. Serial commands are available as a backup to the button:
 
 - `off` — force all relays off
 - `end` — end the active shower
@@ -161,7 +172,7 @@ Tough RFID prototype. Serial commands are available as a backup to touch:
 | External I2C SCL | GPIO33 |
 | Flow pulse input | GPIO26 |
 | Music selector wiper | GPIO36; potentiometer ends to 3V3 and GND |
-| Pump toggle button | GPIO14 to GND (internal pull-up) |
+| Shower start/finish button | GPIO14 to GND (internal pull-up) |
 | Addressable LED data | GPIO13 (Port C white wire) |
 | microSD CS | GPIO4 |
 | microSD SCK/MISO/MOSI | GPIO18 / GPIO38 / GPIO23 |

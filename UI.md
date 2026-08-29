@@ -9,13 +9,14 @@ Screen layouts and interaction flow for the M5Stack Tough display.
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
-    Idle --> Welcome: Tag scanned (authorized)
+    Idle --> LoggedIn: Tag scanned (authorized)
     Idle --> Denied: Tag scanned (unknown)
     Denied --> Idle: Timeout
-    Welcome --> ColorSelect: Start
-    ColorSelect --> Showering: Confirm
-    Showering --> Summary: Stop / allowance reached
-    Summary --> Idle: Timeout / log written
+    LoggedIn --> Showering: Button press 1 (water on)
+    Showering --> Summary: Button press 2 / limit / 20 min timeout
+    LoggedIn --> LoggedIn: Different authorized tag (handoff)
+    Showering --> LoggedIn: Different authorized tag (handoff, logs old shower)
+    Summary --> Idle: 10 s timeout
 ```
 
 ------------------------------------------------------------------------
@@ -27,27 +28,23 @@ stateDiagram-v2
 - "Scan your tag to start"
 - Battery / system status indicator
 
-### Welcome
+### Logged in
 - Greeting with user name
-- Remaining water allowance (if policy enabled)
+- Water allowance
+- "PRESS BUTTON TO START" (no touch; one physical button)
 
 ### Denied
 - "Tag not recognized"
 - Return to idle after timeout
 
-### Color / Effect Select
-- LED color and effect chooser
-- Confirm to enable pump
-
 ### Showering (active session)
 - Live water used (gal / L)
 - Elapsed time
-- Stop button
+- "PRESS BUTTON TO FINISH"
 
-### Summary
+### Summary (10 seconds, then Idle)
 - Gallons used
-- Elapsed / flow time
-- Average flow
+- Elapsed time
 - "Logged — thank you"
 
 ------------------------------------------------------------------------
@@ -58,4 +55,6 @@ stateDiagram-v2
 - Units display (gallons vs liters).
 - Allowance warnings / cutoff behavior.
 
-> _TODO: add wireframes / mockups to drawings/._
+Theme mockups (circus, neon, desert motel, blackout): open
+`drawings/ui-mockups.html` in a browser. Touch is not used; all input is the
+wristband and the single button.
