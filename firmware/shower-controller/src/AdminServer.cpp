@@ -9,7 +9,7 @@
 namespace {
 const char ADMIN_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Camp Shower Admin</title><style>
+<title>Camp Water Admin</title><style>
 :root{color-scheme:dark;--bg:#071817;--card:#102b28;--card2:#153632;--ink:#fff9ea;--muted:#a8c2bc;--a:#53e0a6;--warn:#ffc85b;--danger:#ff756c}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#16423b 0,var(--bg) 38%);color:var(--ink);font:16px system-ui,sans-serif}main{max-width:900px;margin:auto;padding:24px}
 .eyebrow{color:var(--a);font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.13em}h1{font-size:clamp(34px,8vw,58px);line-height:1;margin:.15em 0}.lede,p,small{color:var(--muted)}
@@ -18,33 +18,41 @@ const char ADMIN_PAGE[] PROGMEM = R"HTML(
 button{font:inherit;font-weight:800;border:0;border-radius:11px;padding:12px 15px;background:var(--a);color:#052019;cursor:pointer}button.secondary{background:#31524c;color:var(--ink)}button.danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}button:disabled{opacity:.45}
 .actions{display:flex;gap:9px;margin-top:12px;flex-wrap:wrap}.status{padding:13px;border-left:4px solid var(--a);background:#0d2522;border-radius:7px}.member{padding:15px 0;border-top:1px solid #31534d}.member:first-child{border-top:0}.member-head{display:flex;justify-content:space-between;gap:10px}.uid{font:12px ui-monospace,monospace;color:var(--muted)}.usage{color:var(--a);font-weight:700}.disabled{color:var(--warn)}
 table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;padding:9px 5px;border-bottom:1px solid #31534d}th{color:var(--muted)}
-</style></head><body><main><div class="eyebrow">Local controller · secured</div><h1>Shower Admin</h1><p class="lede">Members, water usage, limits, and station calibration.</p>
-<div id="status" class="status">Connecting…</div><div class="grid"><section class="card"><div class="eyebrow">Station</div><div class="stat"><span id="total">0.00</span> gal</div><small>Total completed usage · <span id="cal">—</span> pulses/gal</small></section>
+</style></head><body><main><div class="eyebrow">Local controller · secured</div><h1 id="title">Station Admin</h1><p class="lede">Members, camp-wide water usage, limits, and station calibration.</p>
+<div id="status" class="status">Connecting…</div><div class="grid"><section class="card"><div class="eyebrow" id="stationInfo">Station</div><div class="stat"><span id="total">0.00</span> gal</div><small>Completed usage at this station · <span id="cal">—</span> pulses/gal</small><p id="peers" style="margin:10px 0 0">Network: —</p></section>
 <section class="card"><div class="eyebrow">Enroll wristband</div><label for="name">Member name</label><input id="name" maxlength="32" placeholder="e.g. Dusty River"><div class="actions"><button id="arm">Enroll next tag</button><button id="cancel" class="secondary">Cancel</button></div></section></div>
-<section class="card"><h2>Members</h2><div id="members"><small>Loading…</small></div></section>
+<section class="card"><h2>Members</h2><small>Usage is camp-wide (all stations). Enroll or edit here and every station updates within seconds.</small><div id="members"><small>Loading…</small></div></section>
+<section class="card"><h2>Station limits</h2><p>Per-session limits for each kind of station. Saved values sync to all four controllers.</p><div style="overflow:auto"><table><thead><tr><th>Kind</th><th>Gallons</th><th>Minutes</th></tr></thead><tbody>
+<tr><td>Shower</td><td><input id="limShowerGal" type="number" min="0.5" max="500" step="0.5"></td><td><input id="limShowerMin" type="number" min="1" max="180" step="1"></td></tr>
+<tr><td>Water fill</td><td><input id="limWaterGal" type="number" min="0.5" max="500" step="0.5"></td><td><input id="limWaterMin" type="number" min="1" max="180" step="1"></td></tr>
+<tr><td>RV fill</td><td><input id="limRvGal" type="number" min="0.5" max="500" step="0.5"></td><td><input id="limRvMin" type="number" min="1" max="180" step="1"></td></tr>
+</tbody></table></div><div class="actions"><button id="saveLimits">Save limits</button></div><small id="limitsInfo"></small></section>
 <div class="grid"><section class="card"><h2>Flow calibration</h2><p>Place the shower head in a known-volume container, start dispensing, then stop at the measured volume.</p><label for="known">Known volume (gallons)</label><input id="known" type="number" min="0.01" max="100" step="0.01" value="1"><div class="actions"><button id="calStart">Start dispensing</button><button id="calStop" class="secondary">Stop &amp; save</button></div><p id="calStatus"></p></section>
 <section class="card"><h2>Change password</h2><label for="password">New admin password</label><input id="password" type="password" minlength="8" maxlength="64"><div class="actions"><button id="changePassword">Update password</button></div><small>You will be prompted to sign in again.</small></section></div>
-<section class="card"><h2>Shower speaker</h2><p id="audioStatus">Connecting…</p><label for="speakerVolume">Volume: <span id="speakerVolumeValue">—</span>%</label><input id="speakerVolume" type="range" min="0" max="100" step="1"><div class="actions"><button id="saveVolume">Set volume</button><button id="tone">Test tone</button><button id="play">Play channel 1</button><button id="stopAudio" class="secondary">Stop</button><button id="findSpeaker" class="secondary">Find speaker</button></div><label for="audioFile">Replace channel 1 (44.1 kHz stereo signed 16-bit PCM)</label><input id="audioFile" type="file"><div class="actions"><button id="uploadAudio" class="secondary">Upload audio</button></div><small>Volume is saved across restarts. The Tough automatically searches for and reconnects to a speaker whose Bluetooth name contains “Select 4 Go”.</small></section>
-<section class="card"><h2>Music vibe selector</h2><p id="knobStatus">Connecting…</p><div class="stat"><span id="knobRaw">—</span><small> / 4095 raw</small></div><p id="knobPoints"></p><div class="actions"><button id="knobCalStart">Start calibration</button><button id="knobCapture">Capture position 0</button><button id="knobCalCancel" class="secondary">Cancel</button></div><small>Ten physical positions: 0 is quiet; 1–9 are music channels. Move the knob to the requested notch and capture each one in order.</small></section>
-<section class="card"><h2>Recent showers</h2><div style="overflow:auto"><table><thead><tr><th>Member</th><th>Gallons</th><th>Duration</th><th>Ended</th></tr></thead><tbody id="sessions"></tbody></table></div></section>
+<div id="musicCards"><section class="card"><h2>Shower speaker</h2><p id="audioStatus">Connecting…</p><label for="speakerVolume">Volume: <span id="speakerVolumeValue">—</span>%</label><input id="speakerVolume" type="range" min="0" max="100" step="1"><div class="actions"><button id="saveVolume">Set volume</button><button id="tone">Test tone</button><button id="play">Play channel 1</button><button id="stopAudio" class="secondary">Stop</button><button id="findSpeaker" class="secondary">Find speaker</button></div><label for="audioFile">Replace channel 1 (44.1 kHz stereo signed 16-bit PCM)</label><input id="audioFile" type="file"><div class="actions"><button id="uploadAudio" class="secondary">Upload audio</button></div><small>Volume is saved across restarts. The Tough automatically searches for and reconnects to a speaker whose Bluetooth name contains “Select 4 Go”.</small></section>
+<section class="card"><h2>Music vibe selector</h2><p id="knobStatus">Connecting…</p><div class="stat"><span id="knobRaw">—</span><small> / 4095 raw</small></div><p id="knobPoints"></p><div class="actions"><button id="knobCalStart">Start calibration</button><button id="knobCapture">Capture position 0</button><button id="knobCalCancel" class="secondary">Cancel</button></div><small>Ten physical positions: 0 is quiet; 1–9 are music channels. Move the knob to the requested notch and capture each one in order.</small></section></div>
+<section class="card"><h2>Recent sessions at this station</h2><div style="overflow:auto"><table><thead><tr><th>Member</th><th>Gallons</th><th>Duration</th><th>Ended</th></tr></thead><tbody id="sessions"></tbody></table></div></section>
 <section class="card"><h2>Controller</h2><p id="health">Connecting…</p><div class="actions"><button id="reboot" class="danger">Reboot controller</button></div><small>Reboot is safe: the pump is shut off first and usage logs live on the SD card.</small></section>
 </main><script>
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function post(path,data={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});const j=await r.json();if(!r.ok)throw Error(j.message||'Request failed');return j}
 let busy=false;
 async function refresh(){if(busy)return;busy=true;const ctl=new AbortController();const tm=setTimeout(()=>ctl.abort(),5000);try{const r=await fetch('/api/overview',{signal:ctl.signal});const o=await r.json();const s=o.status,m={members:o.members},h={sessions:o.sessions},hl=o.health;$('#status').textContent=s.enrollmentPending?`Waiting for ${s.pendingName}'s wristband — tap it now.`:s.message;
+$('#title').textContent=`${s.station} Admin`;$('#stationInfo').textContent=`Station ${s.stationId} · ${s.roleName} · ${s.ssid}`;$('#peers').textContent=`Network: ${s.peers.length?s.peers.map(p=>`${p.name} (${p.online?'online':'last seen '+p.lastSeenS+'s ago'})`).join(' · '):'no other stations heard yet'} · rx ${s.net.rx} tx ${s.net.tx}${s.net.txFail?' fail '+s.net.txFail:''}`;$('#musicCards').style.display=s.features.music?'':'none';
+const L=s.limits,lim=[['limShowerGal',L.shower.gal],['limShowerMin',L.shower.min],['limWaterGal',L.water.gal],['limWaterMin',L.water.min],['limRvGal',L.rv.gal],['limRvMin',L.rv.min]];if(!lim.some(([id])=>document.activeElement===$('#'+id)))lim.forEach(([id,v])=>{$('#'+id).value=v});$('#limitsInfo').textContent=`Version ${L.version} · members version ${s.membersVersion}`;
 $('#health').textContent=`Uptime ${Math.floor(hl.uptimeMs/60000)} min · heap ${Math.round(hl.freeHeap/1024)}k free (low-water ${Math.round(hl.minFreeHeap/1024)}k) · WiFi clients ${hl.wifiClients} · hub ${hl.hub?'ok':'DOWN'} · relay ${hl.relay?'ok':'DOWN'} · RFID ${hl.rfid?'ok':'DOWN'} · SD ${hl.sd?'ok':'DOWN'} · audio underruns ${hl.audioUnderruns}`;$('#cal').textContent=Number(s.pulsesPerGallon).toFixed(2);$('#calStatus').textContent=`${s.calibrationMessage} · ${s.calibrationPulses} pulses`;$('#calStart').disabled=s.calibrationActive;$('#calStop').disabled=!s.calibrationActive;
 $('#audioStatus').textContent=`Speaker: ${s.speaker} · ${s.audioPlayback} · all channel tracks ${s.audioFile?'ready':'missing'}`;if(document.activeElement!==$('#speakerVolume')){$('#speakerVolume').value=s.speakerVolume;$('#speakerVolumeValue').textContent=s.speakerVolume}$('#tone').disabled=s.speaker!=='connected';$('#play').disabled=s.speaker!=='connected'||!s.audioFile;
 $('#knobRaw').textContent=s.musicKnobRaw;$('#knobStatus').textContent=s.musicCalibrationActive?s.musicCalibrationMessage:`Position ${s.musicChannel} · ${s.musicChannelName} · ${s.musicKnobCalibrated?'calibrated':'using test thresholds'}`;$('#knobPoints').textContent=s.musicPositions.map((x,i)=>`${i}: ${x===null?'—':x}`).join(' · ');$('#knobCalStart').disabled=s.musicCalibrationActive;$('#knobCapture').disabled=!s.musicCalibrationActive;$('#knobCapture').textContent=`Capture position ${s.musicCalibrationNext}`;$('#knobCalCancel').disabled=!s.musicCalibrationActive;
-let total=0;$('#members').innerHTML=m.members.length?m.members.map(x=>{total+=x.gallons;return `<div class="member"><div class="member-head"><div><strong>${esc(x.name)}</strong> ${x.enabled?'':'<span class="disabled">disabled</span>'}<div class="uid">${esc(x.uid)}</div></div><div class="usage">${Number(x.gallons).toFixed(2)} gal · ${x.sessions} showers</div></div><div class="actions"><button class="secondary" onclick="editMember('${x.uid}','${encodeURIComponent(x.name)}',${x.allowance},${x.enabled})">Edit · ${Number(x.allowance).toFixed(1)} gal limit</button><button class="danger" onclick="removeMember('${x.uid}')">Delete</button></div></div>`}).join(''):'<small>No members enrolled.</small>';$('#total').textContent=total.toFixed(2);
+let total=0;$('#members').innerHTML=m.members.length?m.members.map(x=>{total+=x.gallons;return `<div class="member"><div class="member-head"><div><strong>${esc(x.name)}</strong> ${x.enabled?'':'<span class="disabled">disabled</span>'}<div class="uid">${esc(x.uid)}</div></div><div class="usage">${Number(x.networkGallons).toFixed(2)} gal total<br><small>showers ${Number(x.showerGallons).toFixed(1)} · water ${Number(x.waterGallons).toFixed(1)} · RV ${Number(x.rvGallons).toFixed(1)} · here ${Number(x.gallons).toFixed(1)}</small></div></div><div class="actions"><button class="secondary" onclick="editMember('${x.uid}','${encodeURIComponent(x.name)}',${x.allowance},${x.enabled})">Edit · ${x.allowance>0?Number(x.allowance).toFixed(1)+' gal shower limit':'station limits'}</button><button class="danger" onclick="removeMember('${x.uid}')">Delete</button></div></div>`}).join(''):'<small>No members enrolled.</small>';$('#total').textContent=total.toFixed(2);
 $('#sessions').innerHTML=h.sessions.length?h.sessions.map(x=>`<tr><td>${esc(x.name)}</td><td>${Number(x.gallons).toFixed(2)}</td><td>${Math.round(x.durationMs/1000)}s</td><td>${esc(x.reason)}</td></tr>`).join(''):'<tr><td colspan="4">No completed showers</td></tr>';}catch(e){$('#status').textContent='Controller not responding — retrying…'}finally{clearTimeout(tm);busy=false}}
 $('#arm').onclick=async()=>{try{await post('/api/enroll',{name:$('#name').value.trim()});refresh()}catch(e){alert(e.message)}};$('#cancel').onclick=async()=>{await post('/api/cancel');refresh()};
-async function editMember(uid,name,allowance,enabled){name=decodeURIComponent(name);const nextName=prompt('Member name',name);if(!nextName)return;const nextAllowance=prompt('Per-shower gallon limit',allowance);if(!nextAllowance)return;const nextEnabled=confirm('Allow this wristband to start showers?');try{await post('/api/member',{uid,name:nextName,allowance:nextAllowance,enabled:nextEnabled?'1':'0'});refresh()}catch(e){alert(e.message)}}
+async function editMember(uid,name,allowance,enabled){name=decodeURIComponent(name);const nextName=prompt('Member name',name);if(!nextName)return;const nextAllowance=prompt('Custom shower limit in gallons (0 = use the station limit; fills always use station limits)',allowance);if(nextAllowance===null||nextAllowance==='')return;const nextEnabled=confirm('Allow this wristband to start showers?');try{await post('/api/member',{uid,name:nextName,allowance:nextAllowance,enabled:nextEnabled?'1':'0'});refresh()}catch(e){alert(e.message)}}
 async function removeMember(uid){if(!confirm('Delete this wristband registration? Historical usage remains.'))return;await post('/api/delete',{uid});refresh()}
 $('#calStart').onclick=async()=>{try{await post('/api/calibration/start');refresh()}catch(e){alert(e.message)}};$('#calStop').onclick=async()=>{try{await post('/api/calibration/stop',{gallons:$('#known').value});refresh()}catch(e){alert(e.message)}};
 $('#changePassword').onclick=async()=>{try{await post('/api/password',{password:$('#password').value});alert('Password changed. Sign in again with the new password.');location.reload()}catch(e){alert(e.message)}};
 $('#speakerVolume').oninput=()=>{$('#speakerVolumeValue').textContent=$('#speakerVolume').value};$('#saveVolume').onclick=async()=>{try{await post('/api/audio/volume',{volume:$('#speakerVolume').value});refresh()}catch(e){alert(e.message)}};$('#tone').onclick=async()=>{try{await post('/api/audio/tone');refresh()}catch(e){alert(e.message)}};$('#play').onclick=async()=>{try{await post('/api/audio/play');refresh()}catch(e){alert(e.message)}};$('#stopAudio').onclick=async()=>{await post('/api/audio/stop');refresh()};$('#uploadAudio').onclick=async()=>{const f=$('#audioFile').files[0];if(!f)return alert('Choose a PCM file first');const body=new FormData();body.append('audio',f);$('#audioStatus').textContent=`Uploading ${f.name}…`;const r=await fetch('/api/audio/upload',{method:'POST',body});const j=await r.json();if(!r.ok)return alert(j.message||'Upload failed');refresh()};
 $('#knobCalStart').onclick=async()=>{try{await post('/api/music/calibration/start');refresh()}catch(e){alert(e.message)}};$('#knobCapture').onclick=async()=>{try{await post('/api/music/calibration/capture');refresh()}catch(e){alert(e.message)}};$('#knobCalCancel').onclick=async()=>{await post('/api/music/calibration/cancel');refresh()};
+$('#saveLimits').onclick=async()=>{try{await post('/api/limits',{showerGal:$('#limShowerGal').value,showerMin:$('#limShowerMin').value,waterGal:$('#limWaterGal').value,waterMin:$('#limWaterMin').value,rvGal:$('#limRvGal').value,rvMin:$('#limRvMin').value});refresh()}catch(e){alert(e.message)}};
 $('#findSpeaker').onclick=async()=>{try{await post('/api/speaker/search');refresh()}catch(e){alert(e.message)}};
 $('#reboot').onclick=async()=>{if(!confirm('Reboot the shower controller?'))return;try{await post('/api/reboot')}catch(e){}$('#status').textContent='Rebooting — the page will reconnect in about 20 seconds.'};
 refresh();setInterval(refresh,2000);
@@ -53,15 +61,15 @@ refresh();setInterval(refresh,2000);
 
 AdminServer::AdminServer(MemberRegistry& registry, const PulseStorage& pulseStorage,
                          const SessionStorage& sessions, SettingsStore& settings,
-                         SpeakerAudio& speakerAudio)
+                         SpeakerAudio& speakerAudio, const UsageLedger& ledger,
+                         CampNetLink& net)
     : registry_(registry), pulseStorage_(pulseStorage), sessions_(sessions),
-      settings_(settings), speakerAudio_(speakerAudio) {}
+      settings_(settings), speakerAudio_(speakerAudio), ledger_(ledger), net_(net) {}
 
 bool AdminServer::begin() {
   if (started_) return true;
-  WiFi.mode(WIFI_AP);
-  WiFi.setSleep(false);
-  if (!WiFi.softAP(Config::WIFI_AP_NAME, Config::WIFI_AP_PASSWORD)) return false;
+  // CampNet owns the radio and brings up the soft-AP; this only serves HTTP.
+  if (!net_.ready()) return false;
   // begin() is retried from the main loop if the AP fails at boot, so the
   // route table must only be registered once.
   if (!routesConfigured_) {
@@ -82,6 +90,7 @@ bool AdminServer::onTagScanned(const String& uid) {
   if (!enrollmentPending_) return false;
   const String name = pendingName_;
   const bool saved = registry_.upsert(uid.c_str(), name);
+  if (saved) net_.markMembersDirty();
   enrollmentPending_ = false;
   pendingName_ = "";
   lastMessage_ = saved ? name + " enrolled" : "Enrollment save failed";
@@ -241,6 +250,7 @@ void AdminServer::configureRoutes() {
   });
   server_.on("/api/audio/volume", HTTP_POST,
              [this]() { if (authorize()) setSpeakerVolume(); });
+  server_.on("/api/limits", HTTP_POST, [this]() { if (authorize()) setRoleLimits(); });
   server_.on("/api/audio/upload", HTTP_POST,
              [this]() {
                if (!audioUploadAuthorized_) return;
@@ -295,7 +305,42 @@ String AdminServer::statusJson() const {
   String body;
   body.reserve(1024);
   body += "{\"station\":\"" + String(Config::STATION_NAME) + "\",\"ip\":\"" + address();
-  body += "\",\"enrollmentPending\":" + String(enrollmentPending_ ? "true" : "false");
+  body += "\",\"stationId\":" + String(Config::STATION_ID_VALUE);
+  body += ",\"role\":" + String(Config::STATION_ROLE_VALUE);
+  body += ",\"roleName\":\"" + String(CampNet::roleName(Config::STATION_ROLE_VALUE)) + "\"";
+  body += ",\"ssid\":\"" + String(Config::WIFI_AP_NAME) + "\"";
+  body += ",\"features\":{\"music\":" + String(Config::HAS_MUSIC ? "true" : "false");
+  body += ",\"leds\":" + String(Config::HAS_LED_STRIP ? "true" : "false");
+  body += ",\"doorSign\":" + String(Config::HAS_DOOR_SIGN ? "true" : "false") + "}";
+  static const char* const limitKeys[CampNet::ROLE_COUNT] = {"shower", "water", "rv"};
+  body += ",\"limits\":{";
+  for (uint8_t role = 0; role < CampNet::ROLE_COUNT; ++role) {
+    body += String("\"") + limitKeys[role] + "\":{\"gal\":" + String(settings_.roleLimits(role).gallons, 1);
+    body += ",\"min\":" + String(settings_.roleLimits(role).minutes) + "},";
+  }
+  body += "\"version\":" + String(settings_.limitsVersion()) + "}";
+  body += ",\"membersVersion\":" + String(registry_.version());
+  body += ",\"net\":{\"ready\":" + String(net_.ready() ? "true" : "false");
+  body += ",\"channel\":" + String(CampNet::CHANNEL);
+  body += ",\"rx\":" + String(net_.rxPackets()) + ",\"rxDropped\":" + String(net_.rxDropped());
+  body += ",\"tx\":" + String(net_.txPackets()) + ",\"txFail\":" + String(net_.txFailures()) + "}";
+  body += ",\"peers\":[";
+  bool firstPeer = true;
+  for (uint8_t id = 1; id <= CampNet::MAX_STATIONS; ++id) {
+    const CampNetLink::Peer& peer = net_.peer(id);
+    if (!peer.seen) continue;
+    if (!firstPeer) body += ',';
+    firstPeer = false;
+    body += "{\"id\":" + String(id) + ",\"name\":\"" + String(Config::STATION_NAMES[id]) + "\"";
+    body += ",\"role\":\"" + String(CampNet::roleName(peer.role)) + "\"";
+    body += ",\"online\":" + String(net_.peerOnline(id) ? "true" : "false");
+    body += ",\"lastSeenS\":" + String((millis() - peer.lastSeenMs) / 1000UL);
+    body += ",\"state\":\"" + String(CampNet::doorStateName(peer.doorState)) + "\"";
+    body += ",\"membersVersion\":" + String(peer.membersVersion);
+    body += ",\"limitsVersion\":" + String(peer.limitsVersion) + "}";
+  }
+  body += "]";
+  body += ",\"enrollmentPending\":" + String(enrollmentPending_ ? "true" : "false");
   body += ",\"pendingName\":\"" + jsonEscape(pendingName_) + "\",\"lastUid\":\"" + jsonEscape(lastUid_);
   body += "\",\"message\":\"" + jsonEscape(lastMessage_) + "\",\"pulsesPerGallon\":" + String(settings_.pulsesPerGallon(), 4);
   body += ",\"calibrationActive\":" + String(calibrationActive_ ? "true" : "false");
@@ -337,8 +382,19 @@ String AdminServer::membersJson() const {
     body += "{\"uid\":\"" + jsonEscape(uid) + "\",\"name\":\"" + jsonEscape(registry_.nameAt(i));
     body += "\",\"allowance\":" + String(registry_.allowanceAt(i), 3);
     body += ",\"enabled\":" + String(registry_.enabledAt(i) ? "true" : "false");
-    body += ",\"gallons\":" + String(sessions_.gallonsFor(uid), 4);
+    const float local = sessions_.gallonsFor(uid);
+    body += ",\"gallons\":" + String(local, 4);
     body += ",\"sessions\":" + String(sessions_.sessionsFor(uid));
+    float byRole[CampNet::ROLE_COUNT];
+    for (uint8_t role = 0; role < CampNet::ROLE_COUNT; ++role) {
+      byRole[role] = ledger_.remoteGallonsByRole(uid, role);
+    }
+    byRole[Config::STATION_ROLE_VALUE] += local;
+    body += ",\"networkGallons\":" + String(local + ledger_.remoteGallonsFor(uid), 4);
+    body += ",\"networkSessions\":" + String(sessions_.sessionsFor(uid) + ledger_.remoteSessionsFor(uid));
+    body += ",\"showerGallons\":" + String(byRole[CampNet::ROLE_SHOWER], 4);
+    body += ",\"waterGallons\":" + String(byRole[CampNet::ROLE_WATER_FILL], 4);
+    body += ",\"rvGallons\":" + String(byRole[CampNet::ROLE_RV_FILL], 4);
     body += ",\"pulses\":" + String(static_cast<unsigned long long>(pulseStorage_.totalFor(uid))) + '}';
   }
   body += ']';
@@ -359,9 +415,30 @@ void AdminServer::updateMember() {
   const float allowance = server_.arg("allowance").toFloat();
   const bool enabled = server_.arg("enabled") == "1";
   if (!registry_.update(uid.c_str(), name, allowance, enabled)) return sendJsonMessage(400, false, "Member update failed");
+  net_.markMembersDirty();
   lastMessage_ = "Member updated"; sendJsonMessage(200, true, lastMessage_);
 }
-void AdminServer::deleteMember() { if (!registry_.remove(server_.arg("uid").c_str())) return sendJsonMessage(404, false, "Registration not found"); lastMessage_ = "Registration deleted"; sendJsonMessage(200, true, lastMessage_); }
+void AdminServer::deleteMember() { if (!registry_.remove(server_.arg("uid").c_str())) return sendJsonMessage(404, false, "Registration not found"); net_.markMembersDirty(); lastMessage_ = "Registration deleted"; sendJsonMessage(200, true, lastMessage_); }
+void AdminServer::setRoleLimits() {
+  static const char* const keys[CampNet::ROLE_COUNT][2] = {
+      {"showerGal", "showerMin"}, {"waterGal", "waterMin"}, {"rvGal", "rvMin"}};
+  SettingsStore::RoleLimits limits[CampNet::ROLE_COUNT];
+  for (uint8_t role = 0; role < CampNet::ROLE_COUNT; ++role) {
+    const String gallons = server_.arg(keys[role][0]);
+    const String minutes = server_.arg(keys[role][1]);
+    if (gallons.isEmpty() || minutes.isEmpty()) return sendJsonMessage(400, false, "Fill in every limit");
+    limits[role].gallons = gallons.toFloat();
+    const long parsedMinutes = minutes.toInt();
+    limits[role].minutes = static_cast<uint16_t>(constrain(parsedMinutes, 0L, 65535L));
+  }
+  if (!SettingsStore::limitsValid(limits)) {
+    return sendJsonMessage(400, false, "Gallons must be 0.5-500 and minutes 1-180");
+  }
+  if (!settings_.setRoleLimits(limits)) return sendJsonMessage(503, false, "Could not save limits to SD card");
+  net_.markLimitsDirty();
+  lastMessage_ = "Station limits saved";
+  sendJsonMessage(200, true, lastMessage_);
+}
 void AdminServer::changePassword() { if (!settings_.setPassword(server_.arg("password"))) return sendJsonMessage(400, false, "Password must be 8-64 characters"); sendJsonMessage(200, true, "Password changed"); }
 void AdminServer::startCalibration() { calibrationStartRequested_ = true; calibrationMessage_ = "Starting…"; sendJsonMessage(200, true, "Calibration requested"); }
 void AdminServer::stopCalibration() { const float gallons = server_.arg("gallons").toFloat(); if (gallons <= 0.0F) return sendJsonMessage(400, false, "Enter a known volume"); calibrationKnownGallons_ = gallons; calibrationStopRequested_ = true; sendJsonMessage(200, true, "Stop requested"); }

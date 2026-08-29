@@ -1,10 +1,10 @@
 #include <M5Unified.h>
 #include <Wire.h>
-#include <WiFiUdp.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
 
 #include "AdminServer.h"
+#include "CampNet.h"
 #include "Config.h"
 #include "FlowMeter.h"
 #include "I2cHub.h"
@@ -16,6 +16,7 @@
 #include "SessionStorage.h"
 #include "SettingsStore.h"
 #include "SpeakerAudio.h"
+#include "UsageLedger.h"
 
 namespace {
 enum class ScreenState { IDLE, ACTIVE, MESSAGE, CALIBRATION };
@@ -26,11 +27,12 @@ MemberRegistry members;
 SessionStorage sessions;
 SettingsStore settings;
 SpeakerAudio speakerAudio;
-AdminServer admin(members, pulseStorage, sessions, settings, speakerAudio);
+UsageLedger ledger;
+CampNetLink campNet(members, sessions, settings, ledger);
+AdminServer admin(members, pulseStorage, sessions, settings, speakerAudio, ledger, campNet);
 RelayController relays;
 RfidReader rfid;
 I2cHub i2cHub;
-WiFiUDP doorDisplayUdp;
 LightShow lightShow;
 
 ScreenState screenState = ScreenState::IDLE;
@@ -57,8 +59,14 @@ uint16_t musicKnobRaw = 0;
 uint16_t musicMotionReferenceRaw = 0;
 uint16_t musicCalibrationPositions[Config::MUSIC_KNOB_POSITION_COUNT] = {0};
 float activeAllowance = 0.0F;
+uint32_t activeTimeoutMs = 0;
 float summaryGallons = 0.0F;
 uint32_t summaryElapsedMs = 0;
+// Camp-wide totals for the wristband that just finished (this station + every
+// other station's last snapshot), shown on the summary screen.
+float summaryTotalGallons = 0.0F;
+float summaryByRole[CampNet::ROLE_COUNT] = {0.0F, 0.0F, 0.0F};
+uint32_t lastRemoteChangeCount = 0;
 bool rfidReady = false;
 bool relayReady = false;
 bool hubReady = false;
@@ -66,7 +74,6 @@ uint8_t hubAddress = Config::PAHUB_ADDRESS;
 int8_t relayChannel = -1;
 int8_t rfidChannel = -1;
 bool calibrationActive = false;
-bool doorDisplayLinkReady = false;
 bool screenDirty = true;
 bool buttonRawPressed = false;
 bool buttonStablePressed = false;
@@ -80,45 +87,43 @@ String musicCalibrationMessage = "Ready to calibrate";
 String messageTitle;
 String messageBody;
 String serialCommand;
-IPAddress lastDoorClient;
-String lastDoorReportedState;
 
 bool sessionActive() { return activeUid[0] != '\0'; }
 
-const char* doorDisplayState() {
-  if (sessionActive()) return "IN_USE";
+uint8_t doorDisplayState() {
+  if (sessionActive()) return CampNet::DOOR_IN_USE;
   if (calibrationActive || !pulseStorage.healthy() || !sessions.healthy() ||
-      !settings.healthy() || !relayReady || !rfidReady) return "UNAVAILABLE";
-  return "OPEN";
+      !settings.healthy() || !relayReady || !rfidReady) return CampNet::DOOR_UNAVAILABLE;
+  return CampNet::DOOR_OPEN;
 }
 
-void serviceDoorDisplayLink() {
-  if (!doorDisplayLinkReady) return;
+// Session limits for a wristband at this station: a member's own shower
+// allowance (if set) overrides the shower limit; fills always use the role
+// limit. Time limits always come from the role.
+float effectiveAllowanceFor(const char* uid) {
+  const float roleLimit = settings.roleLimits(Config::STATION_ROLE_VALUE).gallons;
+  const float memberLimit = members.allowanceFor(uid);
+  if (Config::IS_SHOWER && memberLimit > 0.0F) return memberLimit;
+  return roleLimit > 0.0F ? roleLimit : Config::DEFAULT_ROLE_LIMIT_GALLONS[Config::STATION_ROLE_VALUE];
+}
 
-  int packetSize = 0;
-  while ((packetSize = doorDisplayUdp.parsePacket()) > 0) {
-    char request[48] = {0};
-    const int length = doorDisplayUdp.read(
-        reinterpret_cast<uint8_t*>(request), sizeof(request) - 1);
-    if (length <= 0) continue;
-    request[length] = '\0';
-    if (strcmp(request, Config::DOOR_STATUS_REQUEST) != 0) continue;
+uint32_t effectiveTimeoutMs() {
+  uint16_t minutes = settings.roleLimits(Config::STATION_ROLE_VALUE).minutes;
+  if (minutes < Config::MIN_LIMIT_MINUTES || minutes > Config::MAX_LIMIT_MINUTES) {
+    minutes = Config::DEFAULT_ROLE_LIMIT_MINUTES[Config::STATION_ROLE_VALUE];
+  }
+  return static_cast<uint32_t>(minutes) * 60UL * 1000UL;
+}
 
-    const IPAddress client = doorDisplayUdp.remoteIP();
-    const uint16_t clientPort = doorDisplayUdp.remotePort();
-    const char* state = doorDisplayState();
-    char response[48];
-    snprintf(response, sizeof(response), "%s%s", Config::DOOR_STATUS_PREFIX, state);
-
-    doorDisplayUdp.beginPacket(client, clientPort);
-    doorDisplayUdp.write(reinterpret_cast<const uint8_t*>(response), strlen(response));
-    doorDisplayUdp.endPacket();
-
-    if (client != lastDoorClient || lastDoorReportedState != state) {
-      Serial.printf("[DOOR] client=%s state=%s\n", client.toString().c_str(), state);
-      lastDoorClient = client;
-      lastDoorReportedState = state;
-    }
+void serviceCampNet() {
+  campNet.setDoorState(doorDisplayState(), sessionActive());
+  campNet.handle();
+  ledger.handle();
+  // Limits or members adopted from another station change what the idle
+  // screen advertises.
+  if (campNet.remoteChangeCount() != lastRemoteChangeCount) {
+    lastRemoteChangeCount = campNet.remoteChangeCount();
+    screenDirty = true;
   }
 }
 
@@ -156,24 +161,34 @@ void drawHeader(const char* label, uint16_t accent = TFT_CYAN) {
   M5.Display.setTextColor(accent, 0x0861);
   M5.Display.drawString(label, 12, 14);
   M5.Display.setTextDatum(middle_right);
-  M5.Display.setTextColor((pulseStorage.healthy() && relayReady && rfidReady) ? TFT_GREEN : TFT_ORANGE, 0x0861);
-  M5.Display.drawString((pulseStorage.healthy() && relayReady && rfidReady) ? "SYSTEM READY" : "SERVICE NEEDED", 308, 14);
+  const bool ready = pulseStorage.healthy() && relayReady && rfidReady;
+  char status[40];
+  snprintf(status, sizeof(status), "%s · %u NET", ready ? "READY" : "SERVICE",
+           static_cast<unsigned>(campNet.peerCount()));
+  M5.Display.setTextColor(ready ? TFT_GREEN : TFT_ORANGE, 0x0861);
+  M5.Display.drawString(status, 308, 14);
 }
+
+const char* roleHeaderLabel() { return Config::ROLE_HEADER_LABELS[Config::STATION_ROLE_VALUE]; }
 
 void drawScreen() {
   M5.Display.startWrite();
   M5.Display.fillScreen(0x020E);
   if (screenState == ScreenState::IDLE) {
-    drawHeader("CAMP SHOWER");
+    drawHeader(roleHeaderLabel());
     drawCentered("READY WHEN", 52, 3, TFT_WHITE);
     drawCentered("YOU ARE", 82, 3, TFT_WHITE);
     M5.Display.fillCircle(160, 145, 34, 0x044A);
     M5.Display.drawCircle(160, 145, 34, TFT_CYAN);
     drawCentered("TAP", 128, 2, TFT_CYAN);
     drawCentered("WRISTBAND", 151, 1, TFT_WHITE);
-    drawCentered("10 gallon default · admin adjustable", 214, 1, TFT_LIGHTGREY);
+    const SettingsStore::RoleLimits& limits = settings.roleLimits(Config::STATION_ROLE_VALUE);
+    char footer[64];
+    snprintf(footer, sizeof(footer), "%.0f gallon · %u minute limit per %s", limits.gallons,
+             limits.minutes, Config::ROLE_SESSION_NOUNS[Config::STATION_ROLE_VALUE]);
+    drawCentered(footer, 214, 1, TFT_LIGHTGREY);
   } else if (screenState == ScreenState::ACTIVE) {
-    drawHeader("SHOWER IN PROGRESS", TFT_GREEN);
+    drawHeader(Config::ROLE_ACTIVE_LABELS[Config::STATION_ROLE_VALUE], TFT_GREEN);
     drawCentered(activeName, 38, 2, TFT_WHITE);
     char amount[32];
     snprintf(amount, sizeof(amount), "%.2f gal", gallonsFor(sessionPulses));
@@ -201,16 +216,27 @@ void drawScreen() {
     drawCentered("from the admin page", 171, 1, TFT_LIGHTGREY);
     drawCentered("Pump is ON", 211, 1, TFT_GREEN);
   } else {
-    drawHeader("CAMP SHOWER");
-    drawCentered(messageTitle, 66, 3, messageTitle == "NOT AUTHORIZED" ? TFT_ORANGE : TFT_CYAN);
-    drawCentered(messageBody, 122, 2, TFT_WHITE);
+    drawHeader(roleHeaderLabel());
     if (summaryElapsedMs > 0) {
-      drawCentered(String(summaryGallons, 2) + " gallons used", 160, 2, TFT_GREEN);
+      // End-of-session summary: this session, then the wristband's camp-wide
+      // total across showers and fill stations.
+      drawCentered(messageTitle, 36, 3, TFT_CYAN);
       const uint32_t seconds = summaryElapsedMs / 1000UL;
-      char elapsed[32];
-      snprintf(elapsed, sizeof(elapsed), "%lu min %02lu sec",
+      char line[64];
+      snprintf(line, sizeof(line), "%.2f gal · %lu min %02lu sec", summaryGallons,
                static_cast<unsigned long>(seconds / 60UL), static_cast<unsigned long>(seconds % 60UL));
-      drawCentered(elapsed, 188, 2, TFT_WHITE);
+      drawCentered(line, 72, 2, TFT_GREEN);
+      drawCentered("YOUR TOTAL THIS BURN", 108, 1, TFT_LIGHTGREY);
+      snprintf(line, sizeof(line), "%.1f gal", summaryTotalGallons);
+      drawCentered(line, 124, 4, TFT_WHITE);
+      snprintf(line, sizeof(line), "Showers %.1f · Water %.1f · RV %.1f",
+               summaryByRole[CampNet::ROLE_SHOWER], summaryByRole[CampNet::ROLE_WATER_FILL],
+               summaryByRole[CampNet::ROLE_RV_FILL]);
+      drawCentered(line, 172, 1, TFT_CYAN);
+      drawCentered(messageBody, 196, 1, TFT_WHITE);
+    } else {
+      drawCentered(messageTitle, 66, 3, messageTitle == "NOT AUTHORIZED" ? TFT_ORANGE : TFT_CYAN);
+      drawCentered(messageBody, 122, 2, TFT_WHITE);
     }
     drawCentered("Returning to ready…", 220, 1, TFT_LIGHTGREY);
   }
@@ -268,11 +294,19 @@ void endSession(const char* reason) {
                                              sessionPulses, summaryGallons,
                                              activeAllowance, reason);
   const bool logged = rawLogged && sessionLogged;
-  Serial.printf("[SESSION] end uid=%s pulses=%lu gallons=%.4f reason=%s logged=%s\n",
+  // Camp-wide total: this station's completed sessions (now including this
+  // one) plus the latest snapshot from every other station.
+  for (uint8_t role = 0; role < CampNet::ROLE_COUNT; ++role) {
+    summaryByRole[role] = ledger.remoteGallonsByRole(activeUid, role);
+  }
+  summaryByRole[Config::STATION_ROLE_VALUE] += sessions.gallonsFor(activeUid);
+  summaryTotalGallons = summaryByRole[0] + summaryByRole[1] + summaryByRole[2];
+  campNet.markUsageDirty();
+  Serial.printf("[SESSION] end uid=%s pulses=%lu gallons=%.4f reason=%s logged=%s total=%.2f\n",
                 activeUid, static_cast<unsigned long>(sessionPulses), summaryGallons,
-                reason, logged ? "yes" : "no");
+                reason, logged ? "yes" : "no", summaryTotalGallons);
   activeUid[0] = '\0'; activeName[0] = '\0'; pendingPulses = 0; sessionPulses = 0;
-  setMessage(logged ? "SHOWER COMPLETE" : "LOGGING ERROR",
+  setMessage(logged ? Config::ROLE_COMPLETE_LABELS[Config::STATION_ROLE_VALUE] : "LOGGING ERROR",
              logged ? "Thank you!" : "Tell a camp admin", Config::SUMMARY_DISPLAY_MS);
 }
 
@@ -298,7 +332,8 @@ void startSession(const String& uid) {
   }
   strlcpy(activeUid, uid.c_str(), sizeof(activeUid));
   strlcpy(activeName, name, sizeof(activeName));
-  activeAllowance = members.allowanceFor(activeUid);
+  activeAllowance = effectiveAllowanceFor(activeUid);
+  activeTimeoutMs = effectiveTimeoutMs();
   pendingPulses = 0; sessionPulses = 0; sessionStartMs = millis(); lastLogMs = millis();
   if (!pulseStorage.selectTag(activeUid)) {
     stopPump();
@@ -308,8 +343,9 @@ void startSession(const String& uid) {
   }
   screenState = ScreenState::ACTIVE;
   screenDirty = true;
-  Serial.printf("[SESSION] start uid=%s name=%s allowance=%.2f relay=%u pump=off\n", activeUid,
-                activeName, activeAllowance, Config::PUMP_RELAY);
+  Serial.printf("[SESSION] start uid=%s name=%s allowance=%.2f timeout_min=%lu relay=%u pump=off\n",
+                activeUid, activeName, activeAllowance,
+                static_cast<unsigned long>(activeTimeoutMs / 60000UL), Config::PUMP_RELAY);
 }
 
 void pollFlow() {
@@ -595,21 +631,27 @@ void handleMusicKnob() {
 void serviceReliability() {
   const uint32_t now = millis();
 
-  // The admin AP retries at runtime instead of staying dead until a reboot.
+  // The radio (soft-AP + ESP-NOW) and admin server retry at runtime instead of
+  // staying dead until a reboot.
   static uint32_t lastAdminRetryMs = 0;
-  if (!admin.started() && now - lastAdminRetryMs >= Config::ADMIN_RETRY_INTERVAL_MS) {
+  if ((!campNet.ready() || !admin.started()) &&
+      now - lastAdminRetryMs >= Config::ADMIN_RETRY_INTERVAL_MS) {
     lastAdminRetryMs = now;
-    if (admin.begin()) {
-      doorDisplayLinkReady = doorDisplayUdp.begin(Config::DOOR_DISPLAY_PORT);
-      Serial.printf("[WEB] admin server recovered at http://%s/\n",
-                    admin.address().c_str());
-    } else {
-      Serial.println("[WEB] admin server retry failed");
+    if (!campNet.ready()) {
+      Serial.printf("[NET] retry %s\n", campNet.begin() ? "recovered" : "failed");
+    }
+    if (campNet.ready() && !admin.started()) {
+      if (admin.begin()) {
+        Serial.printf("[WEB] admin server recovered at http://%s/\n",
+                      admin.address().c_str());
+      } else {
+        Serial.println("[WEB] admin server retry failed");
+      }
     }
   }
 
   admin.reportHardware(hubReady, relayReady, rfidReady);
-  if (admin.takeSpeakerSearchRequest()) speakerAudio.requestDiscovery();
+  if (admin.takeSpeakerSearchRequest() && Config::HAS_MUSIC) speakerAudio.requestDiscovery();
   if (admin.takeRebootRequest()) {
     Serial.println("[SYSTEM] reboot requested from admin page");
     if (sessionActive()) endSession("REBOOT");
@@ -622,15 +664,26 @@ void serviceReliability() {
   static uint32_t lastHealthLogMs = 0;
   if (now - lastHealthLogMs >= Config::HEALTH_LOG_INTERVAL_MS) {
     lastHealthLogMs = now;
-    Serial.printf("[HEALTH] uptime=%lus heap=%u min_heap=%u max_alloc=%u psram=%u wifi_clients=%u underruns=%lu\n",
+    Serial.printf("[HEALTH] uptime=%lus heap=%u min_heap=%u max_alloc=%u psram=%u wifi_clients=%u underruns=%lu net_peers=%u net_rx=%lu net_tx=%lu net_txfail=%lu net_rxdrop=%lu\n",
                   static_cast<unsigned long>(now / 1000), ESP.getFreeHeap(),
                   ESP.getMinFreeHeap(), ESP.getMaxAllocHeap(), ESP.getFreePsram(),
                   WiFi.softAPgetStationNum(),
-                  static_cast<unsigned long>(speakerAudio.bufferUnderruns()));
+                  static_cast<unsigned long>(speakerAudio.bufferUnderruns()),
+                  static_cast<unsigned>(campNet.peerCount()),
+                  static_cast<unsigned long>(campNet.rxPackets()),
+                  static_cast<unsigned long>(campNet.txPackets()),
+                  static_cast<unsigned long>(campNet.txFailures()),
+                  static_cast<unsigned long>(campNet.rxDropped()));
   }
 }
 
 void printStatus() {
+  Serial.printf("[STATION] id=%u role=%s name=%s ssid=%s channel=%u peers=%u members=%u/v%lu limits=v%lu\n",
+                Config::STATION_ID_VALUE, CampNet::roleName(Config::STATION_ROLE_VALUE),
+                Config::STATION_NAME, Config::WIFI_AP_NAME, CampNet::CHANNEL,
+                static_cast<unsigned>(campNet.peerCount()), static_cast<unsigned>(members.count()),
+                static_cast<unsigned long>(members.version()),
+                static_cast<unsigned long>(settings.limitsVersion()));
   Serial.printf("[STATE] state=%u uid=%s pulses=%lu gallons=%.3f limit=%.2f relay=0x%02X sd=%s hub=%s@0x%02X relay_ch=%d rfid=%s rfid_ch=%d calibration=%.2f\n",
                 static_cast<unsigned>(screenState), sessionActive() ? activeUid : "NONE",
                 static_cast<unsigned long>(sessionPulses), gallonsFor(sessionPulses),
@@ -687,14 +740,16 @@ void setup() {
   buttonRawPressed = digitalRead(Config::PUMP_BUTTON_PIN) == LOW;
   buttonStablePressed = buttonRawPressed;
   buttonChangedMs = millis();
-  pinMode(Config::MUSIC_KNOB_PIN, INPUT);
-  analogReadResolution(12);
-  analogSetPinAttenuation(Config::MUSIC_KNOB_PIN, ADC_11db);
-  lightShow.begin();
-  uint32_t initialKnobTotal = 0;
-  for (uint8_t i = 0; i < 16; ++i) initialKnobTotal += analogRead(Config::MUSIC_KNOB_PIN);
-  musicKnobRaw = static_cast<uint16_t>(initialKnobTotal / 16U);
-  musicMotionReferenceRaw = musicKnobRaw;
+  if (Config::HAS_MUSIC) {
+    pinMode(Config::MUSIC_KNOB_PIN, INPUT);
+    analogReadResolution(12);
+    analogSetPinAttenuation(Config::MUSIC_KNOB_PIN, ADC_11db);
+    uint32_t initialKnobTotal = 0;
+    for (uint8_t i = 0; i < 16; ++i) initialKnobTotal += analogRead(Config::MUSIC_KNOB_PIN);
+    musicKnobRaw = static_cast<uint16_t>(initialKnobTotal / 16U);
+    musicMotionReferenceRaw = musicKnobRaw;
+  }
+  if (Config::HAS_LED_STRIP) lightShow.begin();
   drawScreen();
 
   flow.begin(Config::FLOW_PIN);
@@ -703,28 +758,40 @@ void setup() {
   const bool membersReady = sdReady && members.begin();
   const bool settingsReady = sdReady && settings.begin();
   const bool sessionsReady = sdReady && sessions.begin();
+  const bool ledgerReady = sdReady && ledger.begin();
 
   Wire.end(); delay(10);
   Wire.begin(Config::I2C_SDA, Config::I2C_SCL, Config::I2C_FREQUENCY);
   discoverI2cDevices();
-  const bool adminReady = admin.begin();
-  doorDisplayLinkReady = adminReady && doorDisplayUdp.begin(Config::DOOR_DISPLAY_PORT);
-  speakerAudio.setSpeakerVolumePercent(settings.speakerVolumePercent());
-  const bool audioReady = speakerAudio.begin();
+  const bool netReady = campNet.begin();
+  const bool adminReady = netReady && admin.begin();
+  bool audioReady = false;
+  if (Config::HAS_MUSIC) {
+    speakerAudio.setSpeakerVolumePercent(settings.speakerVolumePercent());
+    audioReady = speakerAudio.begin();
+  }
 
-  Serial.printf("[BOOT] board=%u ext5v=%s sd=%s members=%s settings=%s sessions=%s hub=%s relay=%s rfid=%s admin=%s\n",
+  Serial.printf("[BOOT] station=%u role=%s board=%u ext5v=%s sd=%s members=%s settings=%s sessions=%s ledger=%s hub=%s relay=%s rfid=%s net=%s admin=%s\n",
+                Config::STATION_ID_VALUE, CampNet::roleName(Config::STATION_ROLE_VALUE),
                 static_cast<unsigned>(M5.getBoard()), M5.Power.getExtOutput()?"on":"off",
                 sdReady?"ok":"fail", membersReady?"ok":"fail", settingsReady?"ok":"fail",
-                sessionsReady?"ok":"fail", hubReady?"ok":"fail", relayReady?"ok":"fail",
-                rfidReady?"ok":"fail", adminReady?"ok":"fail");
+                sessionsReady?"ok":"fail", ledgerReady?"ok":"fail", hubReady?"ok":"fail",
+                relayReady?"ok":"fail", rfidReady?"ok":"fail", netReady?"ok":"fail",
+                adminReady?"ok":"fail");
   Serial.printf("[WEB] ssid=%s address=http://%s/ user=%s\n", Config::WIFI_AP_NAME,
                 admin.address().c_str(), Config::ADMIN_USERNAME);
-  Serial.printf("[DOOR] udp_port=%u link=%s\n", Config::DOOR_DISPLAY_PORT,
-                doorDisplayLinkReady ? "ready" : "failed");
-  Serial.printf("[AUDIO] source=%s file=%s path=%s\n", audioReady ? "ready" : "failed",
-                speakerAudio.fileAvailable() ? "ready" : "missing", Config::AUDIO_PATH);
-  Serial.printf("[MUSIC] knob_pin=%u raw=%u on=%u off=%u\n", Config::MUSIC_KNOB_PIN,
-                musicKnobRaw, Config::MUSIC_KNOB_ON_RAW, Config::MUSIC_KNOB_OFF_RAW);
+  Serial.printf("[NET] channel=%u door_sign=%s members_version=%lu limits_version=%lu\n",
+                CampNet::CHANNEL, Config::HAS_DOOR_SIGN ? "yes" : "no",
+                static_cast<unsigned long>(members.version()),
+                static_cast<unsigned long>(settings.limitsVersion()));
+  if (Config::HAS_MUSIC) {
+    Serial.printf("[AUDIO] source=%s file=%s path=%s\n", audioReady ? "ready" : "failed",
+                  speakerAudio.fileAvailable() ? "ready" : "missing", Config::AUDIO_PATH);
+    Serial.printf("[MUSIC] knob_pin=%u raw=%u on=%u off=%u\n", Config::MUSIC_KNOB_PIN,
+                  musicKnobRaw, Config::MUSIC_KNOB_ON_RAW, Config::MUSIC_KNOB_OFF_RAW);
+  } else {
+    Serial.println("[AUDIO] disabled for this station role");
+  }
   Serial.printf("[I2C] pahub_0x%02X=%s relay_0x26=ch%d rfid_0x28=ch%d\n",
                 hubAddress, hubReady?"yes":"no", relayChannel, rfidChannel);
   Serial.println("[HELP] commands: off end status tone play play1..play9 stop");
@@ -741,13 +808,13 @@ void loop() {
   esp_task_wdt_reset();
   M5.update();
   admin.handle();
-  speakerAudio.handle();
-  lightShow.handle(speakerAudio);
-  serviceDoorDisplayLink();
+  if (Config::HAS_MUSIC) speakerAudio.handle();
+  if (Config::HAS_LED_STRIP) lightShow.handle(speakerAudio);
+  serviceCampNet();
   serviceI2cRecovery();
   serviceReliability();
   handlePumpButton();
-  handleMusicKnob();
+  if (Config::HAS_MUSIC) handleMusicKnob();
   handleSerial();
   pollFlow();
   pollRfid();
@@ -756,7 +823,7 @@ void loop() {
     if (!flushPulses()) endSession("SD_ERROR");
     lastLogMs = millis();
   }
-  if (sessionActive() && millis() - sessionStartMs >= Config::MAX_SESSION_MS) {
+  if (sessionActive() && millis() - sessionStartMs >= activeTimeoutMs) {
     endSession("TIMEOUT");
   }
   if (screenState == ScreenState::MESSAGE && static_cast<int32_t>(millis() - messageUntilMs) >= 0) {

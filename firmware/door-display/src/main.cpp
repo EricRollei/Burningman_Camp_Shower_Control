@@ -1,7 +1,16 @@
 #include <Arduino.h>
 #include <M5UnitOLED.h>
 #include <WiFi.h>
-#include <WiFiUdp.h>
+
+#include "CampNetEspNow.h"
+#include "CampNetProtocol.h"
+
+// Which shower this sign belongs to. Set per PlatformIO environment
+// (-DDOOR_STATION_ID=1 for door1, 2 for door2) and must match the Tough's
+// STATION_ID. The sign ignores every other station on the air.
+#ifndef DOOR_STATION_ID
+#define DOOR_STATION_ID 1
+#endif
 
 namespace {
 
@@ -11,18 +20,12 @@ constexpr uint8_t kButtonPin = 9;
 constexpr uint32_t kI2cFrequencyHz = 100000;
 constexpr uint32_t kMessageIntervalMs = 3000;
 constexpr uint32_t kDebounceMs = 40;
-constexpr uint32_t kStatusRequestIntervalMs = 500;
 constexpr uint32_t kStatusTimeoutMs = 3000;
-constexpr uint32_t kWifiRetryIntervalMs = 5000;
-constexpr uint16_t kToughStatusPort = 4210;
-constexpr uint16_t kLocalStatusPort = 4211;
-constexpr char kWifiName[] = "CampShower-Setup";
-constexpr char kWifiPassword[] = "camp-shower-setup";
-constexpr char kStatusRequest[] = "SHOWER_DISPLAY_V1 STATUS?";
-constexpr char kStatusPrefix[] = "SHOWER_STATUS_V1 ";
+constexpr uint32_t kRadioRetryIntervalMs = 5000;
+constexpr uint8_t kStationId = DOOR_STATION_ID;
+static_assert(kStationId >= 1 && kStationId <= CampNet::MAX_STATIONS, "DOOR_STATION_ID out of range");
 
 M5UnitOLED display(kOledSdaPin, kOledSclPin, kI2cFrequencyHz);
-WiFiUDP statusUdp;
 
 enum class DoorState { Offline, Open, InUse, Unavailable };
 
@@ -39,15 +42,21 @@ constexpr size_t kOpenMessageCount =
 
 bool lastButtonReading = HIGH;
 bool buttonState = HIGH;
-bool udpReady = false;
+bool radioReady = false;
 bool receivedStatus = false;
 uint32_t lastButtonChangeMs = 0;
 uint32_t lastMessageChangeMs = 0;
-uint32_t lastStatusRequestMs = 0;
 uint32_t lastStatusReceivedMs = 0;
-uint32_t lastWifiAttemptMs = 0;
+uint32_t lastRadioAttemptMs = 0;
+uint32_t packetsSeen = 0;
+uint32_t packetsForUs = 0;
 size_t messageIndex = 0;
 DoorState doorState = DoorState::Offline;
+
+// The ESP-NOW receive callback runs on the Wi-Fi task. It only parks the
+// latest matching status here; the loop consumes it.
+volatile bool pendingStatus = false;
+volatile uint8_t pendingDoorState = CampNet::DOOR_UNAVAILABLE;
 
 void drawCenteredText(const char* text, int32_t y, uint8_t size,
                       uint16_t foreground, uint16_t background) {
@@ -55,6 +64,16 @@ void drawCenteredText(const char* text, int32_t y, uint8_t size,
   display.setTextColor(foreground, background);
   display.setTextSize(size);
   display.drawString(text, display.width() / 2, y);
+}
+
+// Tiny station badge so a sign flashed for the wrong shower is obvious.
+void drawBadge(uint16_t foreground, uint16_t background) {
+  char badge[4];
+  snprintf(badge, sizeof(badge), "S%u", kStationId);
+  display.setTextDatum(top_right);
+  display.setTextColor(foreground, background);
+  display.setTextSize(1);
+  display.drawString(badge, display.width() - 1, 0);
 }
 
 void drawOpenScreen() {
@@ -67,6 +86,7 @@ void drawOpenScreen() {
   const uint8_t messageSize = display.textWidth(message) <= display.width() - 4 ? 2 : 1;
   const int32_t messageY = messageSize == 2 ? 34 : 39;
   drawCenteredText(message, messageY, messageSize, TFT_BLACK, TFT_WHITE);
+  drawBadge(TFT_BLACK, TFT_WHITE);
   display.endWrite();
 
   Serial.printf("Display: OPEN / %s\n", message);
@@ -76,6 +96,7 @@ void drawInUseScreen() {
   display.startWrite();
   display.fillScreen(TFT_BLACK);
   drawCenteredText("IN USE", 20, 3, TFT_WHITE, TFT_BLACK);
+  drawBadge(TFT_WHITE, TFT_BLACK);
   display.endWrite();
 
   Serial.println("Display: IN USE");
@@ -86,6 +107,7 @@ void drawUnavailableScreen() {
   display.fillScreen(TFT_BLACK);
   drawCenteredText("UNAVAILABLE", 16, 1, TFT_WHITE, TFT_BLACK);
   drawCenteredText("TRY LATER", 36, 2, TFT_WHITE, TFT_BLACK);
+  drawBadge(TFT_WHITE, TFT_BLACK);
   display.endWrite();
 
   Serial.println("Display: UNAVAILABLE");
@@ -94,12 +116,15 @@ void drawUnavailableScreen() {
 void drawOfflineScreen() {
   display.startWrite();
   display.fillScreen(TFT_BLACK);
-  drawCenteredText(receivedStatus ? "OFFLINE" : "CONNECTING", 14, 2,
+  drawCenteredText(receivedStatus ? "OFFLINE" : "LISTENING", 14, 2,
                    TFT_WHITE, TFT_BLACK);
-  drawCenteredText("TO SHOWER", 42, 1, TFT_WHITE, TFT_BLACK);
+  char line[24];
+  snprintf(line, sizeof(line), "FOR SHOWER %u", kStationId);
+  drawCenteredText(line, 42, 1, TFT_WHITE, TFT_BLACK);
+  drawBadge(TFT_WHITE, TFT_BLACK);
   display.endWrite();
 
-  Serial.printf("Display: %s\n", receivedStatus ? "OFFLINE" : "CONNECTING");
+  Serial.printf("Display: %s\n", receivedStatus ? "OFFLINE" : "LISTENING");
 }
 
 void drawCurrentScreen() {
@@ -130,10 +155,12 @@ void updateButton() {
   if ((now - lastButtonChangeMs) >= kDebounceMs && reading != buttonState) {
     buttonState = reading;
     if (buttonState == LOW) {
-      // The Tough is authoritative. The button now forces an immediate refresh
-      // instead of locally overriding the occupied state.
-      lastStatusRequestMs = 0;
-      Serial.println("NanoC6 button: requesting fresh status");
+      // The Tough is authoritative. The button only redraws the current
+      // state; it never overrides occupancy.
+      drawCurrentScreen();
+      Serial.printf("NanoC6 button: redraw (packets seen=%lu, for us=%lu)\n",
+                    static_cast<unsigned long>(packetsSeen),
+                    static_cast<unsigned long>(packetsForUs));
     }
   }
 }
@@ -153,64 +180,73 @@ void updateCarousel() {
   drawOpenScreen();
 }
 
-void beginWifi() {
-  lastWifiAttemptMs = millis();
-  Serial.printf("Wi-Fi: connecting to %s\n", kWifiName);
-  WiFi.begin(kWifiName, kWifiPassword);
+void onReceive(CAMPNET_RECV_CB_PARAMS) {
+  ++packetsSeen;
+  if (!CampNet::headerValid(data, length)) return;
+  CampNet::Header header;
+  memcpy(&header, data, sizeof(header));
+  if (header.type != CampNet::PKT_STATUS || header.stationId != kStationId ||
+      header.role != CampNet::ROLE_SHOWER) return;
+  if (length < static_cast<int>(sizeof(CampNet::StatusPacket))) return;
+  CampNet::StatusPacket packet;
+  memcpy(&packet, data, sizeof(packet));
+  ++packetsForUs;
+  pendingDoorState = packet.doorState;
+  pendingStatus = true;
 }
 
-void serviceWifi() {
-  if (WiFi.status() == WL_CONNECTED) {
-    if (!udpReady) {
-      udpReady = statusUdp.begin(kLocalStatusPort);
-      Serial.printf("Wi-Fi: connected, ip=%s gateway=%s udp=%s\n",
-                    WiFi.localIP().toString().c_str(),
-                    WiFi.gatewayIP().toString().c_str(),
-                    udpReady ? "ready" : "failed");
-      lastStatusRequestMs = 0;
-    }
-    return;
+bool beginRadio() {
+  lastRadioAttemptMs = millis();
+  // Never-connected STA parked on the shared channel. No WiFi.begin(): a
+  // connecting station would hop channels and stop hearing the Tough.
+  WiFi.setSleep(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.setChannel(CampNet::CHANNEL);
+  const uint32_t startedMs = millis();
+  while (!WiFi.STA.started() && millis() - startedMs < 1000) delay(10);
+  if (!WiFi.STA.started()) {
+    Serial.println("Radio: STA interface did not start");
+    return false;
   }
-
-  if (udpReady) {
-    statusUdp.stop();
-    udpReady = false;
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Radio: esp_now_init failed");
+    return false;
   }
-  if (millis() - lastWifiAttemptMs >= kWifiRetryIntervalMs) beginWifi();
+  esp_now_register_recv_cb(onReceive);
+  esp_now_peer_info_t peer = {};
+  memcpy(peer.peer_addr, CampNet::BROADCAST_MAC, sizeof(peer.peer_addr));
+  peer.ifidx = WIFI_IF_STA;
+  peer.channel = 0;
+  peer.encrypt = false;
+  if (!esp_now_is_peer_exist(CampNet::BROADCAST_MAC) && esp_now_add_peer(&peer) != ESP_OK) {
+    Serial.println("Radio: could not add broadcast peer");
+    esp_now_deinit();
+    return false;
+  }
+  Serial.printf("Radio: ESP-NOW listening on channel %u for shower %u (mac %s)\n",
+                CampNet::CHANNEL, kStationId, WiFi.macAddress().c_str());
+  return true;
 }
 
-void requestStatus() {
-  if (!udpReady || millis() - lastStatusRequestMs < kStatusRequestIntervalMs) return;
-  lastStatusRequestMs = millis();
-  const IPAddress toughAddress = WiFi.gatewayIP();
-  statusUdp.beginPacket(toughAddress, kToughStatusPort);
-  statusUdp.write(reinterpret_cast<const uint8_t*>(kStatusRequest), strlen(kStatusRequest));
-  statusUdp.endPacket();
+void serviceRadio() {
+  if (radioReady) return;
+  if (millis() - lastRadioAttemptMs >= kRadioRetryIntervalMs) radioReady = beginRadio();
 }
 
 void receiveStatus() {
-  if (!udpReady) return;
+  if (!pendingStatus) return;
+  pendingStatus = false;
+  const uint8_t state = pendingDoorState;
 
-  int packetSize = 0;
-  while ((packetSize = statusUdp.parsePacket()) > 0) {
-    char response[48] = {0};
-    const int length = statusUdp.read(
-        reinterpret_cast<uint8_t*>(response), sizeof(response) - 1);
-    if (length <= 0 || statusUdp.remoteIP() != WiFi.gatewayIP()) continue;
-    response[length] = '\0';
-    if (strncmp(response, kStatusPrefix, strlen(kStatusPrefix)) != 0) continue;
+  DoorState nextState;
+  if (state == CampNet::DOOR_OPEN) nextState = DoorState::Open;
+  else if (state == CampNet::DOOR_IN_USE) nextState = DoorState::InUse;
+  else if (state == CampNet::DOOR_UNAVAILABLE) nextState = DoorState::Unavailable;
+  else return;
 
-    const char* state = response + strlen(kStatusPrefix);
-    DoorState nextState;
-    if (strcmp(state, "OPEN") == 0) nextState = DoorState::Open;
-    else if (strcmp(state, "IN_USE") == 0) nextState = DoorState::InUse;
-    else if (strcmp(state, "UNAVAILABLE") == 0) nextState = DoorState::Unavailable;
-    else continue;
-
-    lastStatusReceivedMs = millis();
-    receivedStatus = true;
-    setDoorState(nextState);
-  }
+  lastStatusReceivedMs = millis();
+  receivedStatus = true;
+  setDoorState(nextState);
 }
 
 void enforceStatusTimeout() {
@@ -225,7 +261,7 @@ void enforceStatusTimeout() {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("M5NanoC6 Wi-Fi door display starting");
+  Serial.printf("M5NanoC6 door display starting for shower %u\n", kStationId);
   Serial.printf("SH1107: SDA GPIO%u, SCL GPIO%u, address 0x3C\n",
                 kOledSdaPin, kOledSclPin);
 
@@ -243,17 +279,13 @@ void setup() {
   }
 
   Serial.printf("SH1107 ready: %d x %d\n", display.width(), display.height());
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);
-  WiFi.setAutoReconnect(true);
   drawOfflineScreen();
-  beginWifi();
-  Serial.println("The Tough now controls OPEN / IN USE over local Wi-Fi");
+  radioReady = beginRadio();
+  Serial.println("The Tough controls OPEN / IN USE over CampNet (ESP-NOW)");
 }
 
 void loop() {
-  serviceWifi();
-  requestStatus();
+  serviceRadio();
   receiveStatus();
   enforceStatusTimeout();
   updateButton();

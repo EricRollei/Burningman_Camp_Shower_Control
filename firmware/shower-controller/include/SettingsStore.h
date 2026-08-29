@@ -6,6 +6,11 @@
 
 class SettingsStore {
  public:
+  struct RoleLimits {
+    float gallons = 0.0F;
+    uint16_t minutes = 0;
+  };
+
   bool begin();
   bool setCalibration(float pulsesPerGallon);
   bool setMusicKnobCalibration(
@@ -13,6 +18,18 @@ class SettingsStore {
   bool setSpeakerVolumePercent(uint8_t percent);
   bool setPassword(const String& password);
   bool verifyPassword(const String& password) const;
+
+  // Per-role session limits, synced across stations by version number.
+  const RoleLimits& roleLimits(uint8_t role) const;
+  uint32_t limitsVersion() const { return limitsVersion_; }
+  // Local admin edit: validates, bumps the version past anything seen on the
+  // network, and saves. Returns false if any value is out of bounds.
+  bool setRoleLimits(const RoleLimits limits[CampNet::ROLE_COUNT]);
+  // Network update. Adopts a strictly newer version, or an equal version from
+  // a lower station id (deterministic tie-break). Returns true if adopted.
+  bool applyRemoteLimits(uint32_t version, uint8_t fromStationId,
+                         const RoleLimits limits[CampNet::ROLE_COUNT]);
+  static bool limitsValid(const RoleLimits limits[CampNet::ROLE_COUNT]);
 
   bool healthy() const { return healthy_; }
   float pulsesPerGallon() const { return pulsesPerGallon_; }
@@ -32,6 +49,9 @@ class SettingsStore {
   uint8_t passwordHash_[32] = {0};
   uint16_t musicKnobPositions_[Config::MUSIC_KNOB_POSITION_COUNT] = {0};
   uint8_t speakerVolumePercent_ = Config::DEFAULT_SPEAKER_VOLUME_PERCENT;
+  RoleLimits roleLimits_[CampNet::ROLE_COUNT];
+  uint32_t limitsVersion_ = 0;
+  uint32_t highestSeenLimitsVersion_ = 0;
   bool hasPassword_ = false;
   bool musicKnobCalibrated_ = false;
   bool healthy_ = false;

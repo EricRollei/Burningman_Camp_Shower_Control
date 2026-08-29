@@ -4,11 +4,18 @@ This file applies to everything under `firmware/`.
 
 ## Projects
 
-- `shower-controller/` is the primary M5Stack Tough firmware. It owns RFID
+- `shower-controller/` is the M5Stack Tough station firmware. One codebase
+  builds four station images (`shower1`, `shower2`, `water_fill`, `rv_fill`)
+  selected by `STATION_ID` / `STATION_ROLE` build flags. It owns RFID
   authorization, relay and pump control, flow accounting, SD-card persistence,
-  the admin access point, Bluetooth audio, lighting, and the UDP status server.
-- `door-display/` is a separate M5NanoC6 PlatformIO project. It drives the
-  SH1107 OLED and treats the Tough's UDP response as authoritative.
+  the admin access point, the CampNet ESP-NOW link, and (shower role only)
+  Bluetooth audio and lighting.
+- `door-display/` is a separate M5NanoC6 PlatformIO project (`door1`, `door2`).
+  It drives the SH1107 OLED and treats its shower's CampNet `STATUS`
+  broadcast as authoritative.
+- `shared/` holds the wire protocol both projects compile against
+  (`CampNetProtocol.h`, `CampNetEspNow.h`); it is on both include paths via
+  `build_flags = -I../shared`.
 - `audio-reactive-led/` is a standalone Arduino sketch for an AtomS3 with an
   Atomic Echo Base. It is a prototype, not part of either PlatformIO build.
 
@@ -20,14 +27,22 @@ top-level `README.md` contains the system wiring and plumbing design.
 Run commands from the repository root:
 
 ```sh
-pio run --project-dir firmware/shower-controller
-pio run --project-dir firmware/door-display
+pio run --project-dir firmware/shower-controller -e shower1 -e shower2 -e water_fill -e rv_fill
+pio run --project-dir firmware/door-display -e door1 -e door2
 ```
 
 There is currently no automated test suite. At minimum, build every PlatformIO
-project touched by a change. If shared Wi-Fi or UDP behavior changes, build
-both projects. Report when a build cannot run because PlatformIO, cached
-dependencies, or the target toolchain is unavailable.
+environment touched by a change (a role-gated change must build for a shower
+and a fill env). If anything under `firmware/shared/` or CampNet behavior
+changes, build both projects. Report when a build cannot run because
+PlatformIO, cached dependencies, or the target toolchain is unavailable.
+
+Build the two projects one after the other, never concurrently: the Tough
+(espressif32 6.9 / core 2.0.17) and the NanoC6 (pioarduino / core 3.3.9) both
+install into `~/.platformio/packages/framework-arduinoespressif32`, so
+switching projects re-downloads the framework and a parallel build sees a
+half-written package. If the first build after a switch fails with a Python
+`TypeError` or a missing framework header, simply run it again.
 
 Do not upload firmware or open a serial monitor unless the user explicitly
 asks for hardware interaction and the target port has been confirmed. The
@@ -55,21 +70,38 @@ Treat pump and relay behavior as safety-critical.
   protected GPIO26 flow input, the GPIO36 3.3 V potentiometer wiring, common
   grounds, and separately powered LED-strip guidance.
 - The door display must fail to `OFFLINE` after loss of valid controller status;
-  its local button must not override the Tough's occupancy state.
+  its local button must not override the Tough's occupancy state. It must only
+  act on `STATUS` packets whose `stationId` equals its `DOOR_STATION_ID`.
+- Nothing received over CampNet may energize a relay or open a session. The
+  link only updates the usage ledger, the member registry, and role limits.
+- Role limits are bounded (`MIN/MAX_LIMIT_GALLONS`, `MIN/MAX_LIMIT_MINUTES` in
+  `Config.h`); reject out-of-range values on both the admin and network paths
+  so a bad packet cannot lengthen the safety timeout.
 
 When changing lifecycle logic, trace every return/error path that can follow a
 relay-on operation and ensure it reaches a stop/all-off action.
 
 ## Shared Contracts
 
-The Tough and NanoC6 duplicate several wire-level constants because they are
-separate firmware images. Keep both sides synchronized when changing:
+Every wire-level constant lives once in `firmware/shared/CampNetProtocol.h`
+and is compiled into both the Tough and the NanoC6:
 
-- Wi-Fi SSID and password.
-- UDP ports (`4210` on the Tough and `4211` on the NanoC6).
-- Request text `SHOWER_DISPLAY_V1 STATUS?`.
-- Response prefix `SHOWER_STATUS_V1 ` and states `OPEN`, `IN_USE`, and
-  `UNAVAILABLE`.
+- `CampNet::CHANNEL` (the Wi-Fi channel every soft-AP and door sign is pinned
+  to), `MAGIC`, `PROTOCOL_VERSION`, `MAX_STATIONS`.
+- Packet types `STATUS`, `USAGE`, `MEMBERS`, `LIMITS` and their packed structs.
+  Every packet has a `static_assert` keeping it at or below 250 bytes; do not
+  remove it (the classic ESP32 only receives ESP-NOW v1-sized frames).
+- Roles (`ROLE_SHOWER`, `ROLE_WATER_FILL`, `ROLE_RV_FILL`) and door states.
+
+Bump `PROTOCOL_VERSION` when a struct layout changes; receivers drop frames
+with an unknown version. `CampNetEspNow.h` holds the callback-signature shims
+for Arduino core 2.x (Tough) versus 3.x (NanoC6); the transport code uses the
+raw `esp_now_*` C API on both sides.
+
+Station identity is compile-time only: `STATION_ID` and `STATION_ROLE` on the
+Tough, `DOOR_STATION_ID` on the NanoC6. Names, SSIDs and feature gating derive
+from them in `shower-controller/include/Config.h`. Never flash two devices with
+the same station id.
 
 Update the relevant firmware README whenever pins, wiring, credentials,
 protocols, build steps, user-visible behavior, CSV schemas, or SD-card paths
@@ -105,7 +137,8 @@ Before handing off a firmware change:
 
 1. Build each affected PlatformIO project.
 2. Recheck relay-off and timeout behavior for controller lifecycle changes.
-3. Check both ends of shared Tough/NanoC6 protocol changes.
+3. Check both ends of shared Tough/NanoC6 protocol changes, and that a
+   protocol change bumped `PROTOCOL_VERSION`.
 4. Update documentation for observable behavior or hardware changes.
 5. Identify any verification that still requires connected hardware: relay
    state, RFID, flow pulses, SD persistence, display output, Bluetooth audio,

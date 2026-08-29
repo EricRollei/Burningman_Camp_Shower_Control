@@ -1,7 +1,9 @@
 # Software Specification
 
-Firmware for the M5Stack Tough controller. One instance per shower;
-stations are fully independent and merge logs after the event.
+Firmware for the M5Stack Tough controller. One image per station (two
+showers, water fill, RV fill) from a single codebase. Stations keep their own
+logs and sync members, limits and per-person usage totals live over a
+router-free ESP-NOW network; see `firmware/shower-controller/README.md`.
 
 ------------------------------------------------------------------------
 

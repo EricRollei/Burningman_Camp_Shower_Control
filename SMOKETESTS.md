@@ -42,4 +42,28 @@ One pass through this list before the burn. Check items off as they pass.
 - [ ] **Door display:** confirm the OLED sign still tracks
       OPEN / IN_USE / UNAVAILABLE through a full session.
 
+## CampNet (branch `worktree-camp-network`)
+
+- [ ] **Right images on the right boxes:** serial `status` on each Tough prints
+      `[STATION] id=… role=…` matching its label; each door sign shows `S1` /
+      `S2` in the corner matching the shower it is mounted on.
+- [ ] **Door sign tracks its own shower only:** start a session on Shower 1 —
+      door 1 flips to IN USE within a second, door 2 stays OPEN. Power off
+      Shower 1's Tough — door 1 shows OFFLINE within 3 s.
+- [ ] **Peers visible:** every Tough's screen header shows `READY · 3 NET`
+      with all four powered; the admin Station card lists the other three.
+- [ ] **Enroll anywhere:** enroll a wristband on the water-fill station, tap
+      it on a shower within 30 s — session opens.
+- [ ] **Camp-wide total on the summary screen:** finish a shower, then a
+      water fill with the same wristband — the fill's summary shows the shower
+      gallons under "Showers" and the sum under "YOUR TOTAL THIS BURN".
+- [ ] **Limits sync:** change the RV fill limit on Shower 1's admin page; the
+      RV station's idle footer updates within 30 s and an RV fill ends at the
+      new limit.
+- [ ] **Ledger survives reboot:** power-cycle a Tough with the others off;
+      the admin Members card still shows the other stations' gallons
+      (`/NETUSAGE.CSV` on the SD card).
+- [ ] **Coexistence:** play a song on a shower while an admin page is open;
+      `[HEALTH]` `net_rxdrop` stays at 0 and door signs stay OPEN/IN USE.
+
 ## (add in-flight work below)

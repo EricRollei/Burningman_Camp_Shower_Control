@@ -1,17 +1,72 @@
-# Shower Controller Firmware
+# Station Controller Firmware
 
-Shower-session firmware for the M5Stack Tough and the attached controller
+Session firmware for the M5Stack Tough stations and the attached controller
 hardware:
 
 - M5Stack PaHUB v2.1 multiplexer on external I2C address `0x70`
 - RFID2 reader on a PaHUB port at I2C address `0x28`
 - M5Stack Unit 4Relay on a PaHUB port at I2C address `0x26`
-- M5NanoC6 door-display controller with a locally connected SH1107 OLED
 - protected flow-meter pulse signal on GPIO26
-- 10 kOhm music-selector potentiometer on GPIO36 (ADC1)
-- WS2811-style 12 V addressable LED strip on GPIO13
 - onboard microSD card for persistent CSV logging
 - secured local Wi-Fi admin dashboard
+- CampNet ESP-NOW link to every other station and door sign
+- shower stations only: M5NanoC6 door sign with SH1107 OLED, 10 kOhm
+  music-selector potentiometer on GPIO36 (ADC1), WS2811-style 12 V addressable
+  LED strip on GPIO13, Bluetooth speaker
+
+## Stations
+
+One codebase builds one image per station. The PlatformIO environment sets
+`STATION_ID` and `STATION_ROLE`; everything else (name, SSID, features,
+limits) derives from those in `include/Config.h`.
+
+| env | Station | Role | Admin SSID | Door sign |
+|---|---|---|---|---|
+| `shower1` (default) | Shower 1 | shower | `CampShower-1` | `door1` |
+| `shower2` | Shower 2 | shower | `CampShower-2` | `door2` |
+| `water_fill` | Water Fill | water fill | `CampWaterFill` | — |
+| `rv_fill` | RV Fill | RV fill | `CampRVFill` | — |
+
+Fill stations run the same session flow (wristband opens a session, the GPIO14
+button starts the water and ends the fill) with the speaker, music knob, LED
+strip and door sign compiled out. Never flash two Toughs with the same id.
+
+## CampNet
+
+All four Toughs and both door signs share one peer-to-peer ESP-NOW network on
+Wi-Fi channel `CampNet::CHANNEL` (1). There is no router and no hub: every
+station broadcasts, every station listens, and any station can be off or out
+of range without affecting the others. Each Tough still runs its own admin
+soft-AP (pinned to the same channel) so a phone can reach any station.
+
+What travels over the link (`firmware/shared/CampNetProtocol.h`):
+
+| Packet | From every Tough | Purpose |
+|---|---|---|
+| `STATUS` | every 500 ms + on change | `OPEN` / `IN_USE` / `UNAVAILABLE` for the door signs |
+| `USAGE` | every 10 s + right after a session ends | this station's per-wristband totals (from `/SESSIONS.CSV`) |
+| `MEMBERS` | every 30 s + right after an edit | the whole member registry with a version number |
+| `LIMITS` | every 30 s + right after an edit | per-role gallon and minute limits with a version number |
+
+Every Tough keeps the latest `USAGE` snapshot from each other station in
+`/NETUSAGE.CSV` (written at most every 15 s). A wristband's camp-wide total is
+this station's own sessions plus those snapshots, so the summary screen after
+a shower or a fill shows **this session**, **total this burn**, and the split
+between showers, water fill and RV fill. Snapshots are idempotent, so a lost
+packet is healed by the next one and a rebooted station has full totals again
+within about 10 s of hearing its peers.
+
+Members and limits use version-numbered last-writer-wins: a local edit bumps
+the version past anything heard on the air and broadcasts; a newer version
+replaces the local copy and is saved to the SD card. Two stations that edit at
+the same version (for example two fresh SD cards each with their own
+enrollments) are merged by union so no wristband disappears. Versions live in
+`/MEMBERS.VER` and `SETTINGS.CSV` (`limits_version`).
+
+The header of every screen shows `READY · n NET`, where `n` is the number of
+other stations heard in the last 15 s. The admin page's Station card lists
+each peer with its last-seen time, and `/api/status` exposes `peers`, `net`
+counters, `limits`, `membersVersion` and `features`.
 
 ## Session behavior
 
@@ -37,12 +92,20 @@ the RFID reader and the single momentary button on GPIO14.
    `/SESSIONS.CSV`; `/PULSES.CSV` remains the raw audit log.
 9. Unknown and disabled wristbands are denied.
 
-The NanoC6 and external OLED form the public availability sign. The Nano joins
-the Tough's local Wi-Fi access point and requests status twice per second. While
-available, the OLED uses an inverted bright background and rotates through
-short messages such as `HEY STINKY`, `SHOWER TIME`, and `SCRUB A DUB`. During
-an authorized shower session it displays `IN USE`, even when the pump is
-paused. It fails safe to `OFFLINE` after three seconds without a valid reply.
+The NanoC6 and external OLED form the public availability sign of each shower.
+The Nano listens on CampNet for `STATUS` broadcasts from its own shower's
+station id (twice per second). While available, the OLED uses an inverted
+bright background and rotates through short messages such as `HEY STINKY`,
+`SHOWER TIME`, and `SCRUB A DUB`. During an authorized shower session it
+displays `IN USE`, even when the pump is paused. It fails safe to `OFFLINE`
+after three seconds without a valid broadcast.
+
+Session limits come from the **Station limits** card on the admin page (per
+kind of station: gallons and minutes) and sync to every controller. Defaults
+are shower 10 gal / 20 min, water fill 10 gal / 60 min, RV fill 100 gal /
+60 min; the firmware clamps to 0.5–500 gal and 1–180 min. A member's own
+allowance (`allowance_gallons` in `/MEMBERS.CSV`) is a shower-only override;
+`0` means "use the station limit", and fills always use the station limit.
 The Tough's built-in display shows the operational UI to the person using the
 controller; its touch layer is not used.
 
@@ -53,17 +116,18 @@ reconnecting a loose Grove cable without rebooting.
 
 ## Admin dashboard
 
-At boot the Tough creates this local setup network:
+At boot each Tough creates its own local setup network:
 
 | Setting | Value |
 |---|---|
-| Wi-Fi name | `CampShower-Setup` |
+| Wi-Fi name | per station: `CampShower-1`, `CampShower-2`, `CampWaterFill`, `CampRVFill` |
 | Wi-Fi password | `camp-shower-setup` |
 | Setup page | `http://192.168.4.1/` |
 
-The network is local and does not provide internet access. To enroll a tag:
+The network is local and does not provide internet access. To enroll a tag
+(at any station — the registry syncs to the others within seconds):
 
-1. Join `CampShower-Setup` from a phone.
+1. Join that station's Wi-Fi from a phone.
 2. Open `http://192.168.4.1/` in the phone browser.
 3. Enter a member name and tap **Enroll next tag**.
 4. Tap the tag against the Tough's RFID2 reader.
@@ -74,9 +138,11 @@ salted SHA-256 hash. HTTP Basic authentication protects the controller's local
 admin page.
 
 The association is written to `/MEMBERS.CSV` on the microSD card. The setup
-page lists registered tags, completed usage and per-shower limits. It supports
-enrollment, editing, disabling, and deletion. Deleting a registration does not
-delete historical usage.
+page lists registered tags with their camp-wide usage (showers, water fill,
+RV fill, and this station) and any custom shower limit. It supports
+enrollment, editing, disabling, and deletion; every change propagates to the
+other stations over CampNet. Deleting a registration does not delete
+historical usage. The speaker and music cards are hidden on fill stations.
 
 ## Reliability
 
@@ -132,10 +198,10 @@ positions 1-9 start their assigned songs.
 | 8 | Maniac — Michael Sembello | `/CH8.PCM` |
 | 9 | Jesus Built My Hotrod — Ministry | `/CH9.PCM` |
 
-The first prototype uses the tag's factory UID as its identity; it does not
-write user data onto the tag. The JSON endpoints under `/api/` intentionally
-keep UID, member registry, and usage totals separate so the same model can be
-shared with the other shower and fill-station controllers later.
+The firmware uses the tag's factory UID as its identity; it does not write
+user data onto the tag. The JSON endpoints under `/api/` keep UID, member
+registry, and usage totals separate; `/api/members` reports both this
+station's `gallons` and the camp-wide `networkGallons` with a per-role split.
 
 The CSV is append-only and is replayed at boot to restore each tag's total:
 
@@ -152,10 +218,14 @@ added later once the RTC policy is decided.
 
 ```sh
 cd firmware/shower-controller
-pio run
-pio run --target upload
+pio run -e shower1            # or shower2, water_fill, rv_fill
+pio run -e shower1 --target upload
 pio device monitor
 ```
+
+Build and flash each Tough with its own environment; the station id is baked
+into the image. The serial `status` command prints a `[STATION]` line with the
+id, role, SSID, channel, peer count and sync versions for confirmation.
 
 The configured USB port and verified upload speed come from the existing
 Tough RFID prototype. Serial commands are available as a backup to the button:

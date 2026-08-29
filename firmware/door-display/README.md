@@ -12,22 +12,33 @@ Connect the OLED directly to the NanoC6 Grove I2C port with a short cable:
 - Yellow: SDA (GPIO 2)
 - White: SCL (GPIO 1)
 
-The NanoC6 joins the Tough's `CampShower-Setup` access point and requests the
-current shower state over local UDP. No internet connection or external router
-is required. The Tough reports `IN USE` for the entire authorized session,
-including while its pump is paused. The Nano displays `OFFLINE` if it goes more
-than three seconds without a valid response.
+## How it follows its shower
 
-The NanoC6 onboard button (GPIO 9) requests an immediate status refresh; it does
-not override the state supplied by the Tough.
+The NanoC6 does not join any Wi-Fi network. It parks its radio on the shared
+CampNet channel (`CampNet::CHANNEL` in `firmware/shared/CampNetProtocol.h`)
+and listens for the ESP-NOW `STATUS` broadcast that every Tough sends twice a
+second. It only acts on packets whose station id matches its own
+`DOOR_STATION_ID`, so a sign for Shower 1 ignores Shower 2 and the fill
+stations entirely.
+
+The Tough reports `IN USE` for the entire authorized session, including while
+its pump is paused. The Nano displays `OFFLINE` if it goes more than three
+seconds without a valid broadcast from its shower, and `LISTENING FOR SHOWER n`
+until the first one arrives. Every screen carries a small `S1` / `S2` badge in
+the top-right corner so a sign flashed for the wrong shower is obvious.
+
+The NanoC6 onboard button (GPIO 9) redraws the current screen and prints
+packet counters to serial; it does not override the state supplied by the Tough.
 
 ## Build and upload
 
+Each sign gets its own image with the shower id baked in:
+
 ```sh
 cd firmware/door-display
-pio run --target upload
+pio run -e door1 --target upload    # sign on Shower 1
+pio run -e door2 --target upload    # sign on Shower 2
 pio device monitor
 ```
 
-The Tough-side UDP responder listens on port `4210`; the Nano uses local port
-`4211`.
+`door1` matches the Tough built with `-e shower1`, `door2` with `-e shower2`.

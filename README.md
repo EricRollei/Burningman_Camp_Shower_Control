@@ -15,8 +15,11 @@ RFID/NFC access control and per-person water logging.
 - Support quick battery swaps using a single Anderson connector.
 - Survive the harsh playa environment.
 
-The two showers are completely independent. Their CSV logs can be merged
-after the event.
+The two showers, the water-jug fill station and the RV fill station each run
+their own controller and SD card, but share one router-free ESP-NOW network
+("CampNet"). Wristband enrollment and station limits sync between them, and
+each station shows a person's camp-wide water total when their shower or fill
+ends. See [firmware/shower-controller/README.md](firmware/shower-controller/README.md).
 
 ------------------------------------------------------------------------
 

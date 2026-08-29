@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include "CampNetProtocol.h"
+
 namespace Config {
 
 // Tough Grove Port A / rear Tough.EXT I2C connector.
@@ -92,19 +94,70 @@ constexpr uint32_t ADMIN_RETRY_INTERVAL_MS = 30000;
 // effective 0-127 scale; 43% preserves the previous raw setting of 55.
 constexpr uint8_t DEFAULT_SPEAKER_VOLUME_PERCENT = 43;
 
-constexpr float DEFAULT_ALLOWANCE_GALLONS = 10.0F;
+// Station identity comes from the PlatformIO environment (-DSTATION_ID=n
+// -DSTATION_ROLE=r); see platformio.ini. Everything else derives from it.
+#ifndef STATION_ID
+#define STATION_ID 1
+#endif
+#ifndef STATION_ROLE
+#define STATION_ROLE 0
+#endif
+static_assert(STATION_ID >= 1 && STATION_ID <= CampNet::MAX_STATIONS, "STATION_ID out of range");
+static_assert(STATION_ROLE >= 0 && STATION_ROLE < CampNet::ROLE_COUNT, "STATION_ROLE out of range");
+constexpr uint8_t STATION_ID_VALUE = STATION_ID;
+constexpr uint8_t STATION_ROLE_VALUE = STATION_ROLE;
+constexpr bool IS_SHOWER = STATION_ROLE_VALUE == CampNet::ROLE_SHOWER;
+// Fill stations share the controller stack but have no speaker, music knob,
+// LED strip, or door sign.
+constexpr bool HAS_MUSIC = IS_SHOWER;
+constexpr bool HAS_LED_STRIP = IS_SHOWER;
+constexpr bool HAS_DOOR_SIGN = IS_SHOWER;
+// Indexed by STATION_ID (index 0 unused).
+constexpr const char* STATION_NAMES[CampNet::MAX_STATIONS + 1] = {
+    "", "Shower 1", "Shower 2", "Water Fill", "RV Fill",
+    "Station 5", "Station 6", "Station 7", "Station 8"};
+constexpr const char* STATION_SSIDS[CampNet::MAX_STATIONS + 1] = {
+    "", "CampShower-1", "CampShower-2", "CampWaterFill", "CampRVFill",
+    "CampStation-5", "CampStation-6", "CampStation-7", "CampStation-8"};
+constexpr const char* STATION_NAME = STATION_NAMES[STATION_ID_VALUE];
+// Indexed by role: shower, water fill, RV fill.
+constexpr const char* ROLE_HEADER_LABELS[CampNet::ROLE_COUNT] = {"CAMP SHOWER", "WATER FILL", "RV FILL"};
+constexpr const char* ROLE_ACTIVE_LABELS[CampNet::ROLE_COUNT] = {"SHOWER IN PROGRESS", "FILLING JUGS", "FILLING RV"};
+constexpr const char* ROLE_COMPLETE_LABELS[CampNet::ROLE_COUNT] = {"SHOWER COMPLETE", "FILL COMPLETE", "FILL COMPLETE"};
+constexpr const char* ROLE_SESSION_NOUNS[CampNet::ROLE_COUNT] = {"shower", "fill", "fill"};
+
+// Per-role session limits. Defaults seed a fresh SD card; the admin page edits
+// them and the values sync to every station over CampNet. Bounds are hard.
+constexpr float DEFAULT_ROLE_LIMIT_GALLONS[CampNet::ROLE_COUNT] = {10.0F, 10.0F, 100.0F};
+constexpr uint16_t DEFAULT_ROLE_LIMIT_MINUTES[CampNet::ROLE_COUNT] = {20, 60, 60};
+constexpr float MIN_LIMIT_GALLONS = 0.5F;
+constexpr float MAX_LIMIT_GALLONS = 500.0F;
+constexpr uint16_t MIN_LIMIT_MINUTES = 1;
+constexpr uint16_t MAX_LIMIT_MINUTES = 180;
+// A member's own allowance of 0 means "use the station's role limit".
+constexpr float DEFAULT_ALLOWANCE_GALLONS = 0.0F;
 constexpr float DEFAULT_PULSES_PER_GALLON = 450.0F;
 constexpr uint8_t PUMP_RELAY = 1;
-constexpr uint32_t MAX_SESSION_MS = 20UL * 60UL * 1000UL;
 constexpr uint32_t MAX_CALIBRATION_MS = 10UL * 60UL * 1000UL;
 
-// Bench-prototype setup network. Change the password before field use.
-constexpr char WIFI_AP_NAME[] = "CampShower-Setup";
+// CampNet: ESP-NOW broadcast between all stations and door signs. Cadences are
+// periodic idempotent snapshots so lost frames self-heal.
+constexpr char NET_USAGE_PATH[] = "/NETUSAGE.CSV";
+constexpr char MEMBER_VERSION_PATH[] = "/MEMBERS.VER";
+constexpr uint32_t NET_STATUS_INTERVAL_MS = 500;
+constexpr uint32_t NET_USAGE_INTERVAL_MS = 10000;
+constexpr uint32_t NET_MEMBERS_INTERVAL_MS = 30000;
+constexpr uint32_t NET_LIMITS_INTERVAL_MS = 30000;
+constexpr uint32_t NET_PEER_TIMEOUT_MS = 15000;
+constexpr uint32_t NET_STAGING_TIMEOUT_MS = 5000;
+constexpr uint32_t NET_LEDGER_SAVE_DEBOUNCE_MS = 15000;
+constexpr uint32_t NET_BOOT_ANNOUNCE_DELAY_MS = 2000;
+constexpr uint8_t WIFI_AP_MAX_CLIENTS = 8;
+
+// Each station runs its own admin soft-AP (SSID from STATION_SSIDS) pinned to
+// CampNet::CHANNEL. Change the password before field use.
+constexpr const char* WIFI_AP_NAME = STATION_SSIDS[STATION_ID_VALUE];
 constexpr char WIFI_AP_PASSWORD[] = "camp-shower-setup";
-constexpr char STATION_NAME[] = "shower-controller-prototype";
-constexpr uint16_t DOOR_DISPLAY_PORT = 4210;
-constexpr char DOOR_STATUS_REQUEST[] = "SHOWER_DISPLAY_V1 STATUS?";
-constexpr char DOOR_STATUS_PREFIX[] = "SHOWER_STATUS_V1 ";
 constexpr char ADMIN_USERNAME[] = "admin";
 // Used only to initialize a new SD card. Change this before field deployment.
 constexpr char INITIAL_ADMIN_PASSWORD[] = "change-me-shower";

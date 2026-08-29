@@ -2,8 +2,12 @@
 
 #include <Arduino.h>
 
+#include "CampNetProtocol.h"
+
 class MemberRegistry {
  public:
+  static constexpr size_t MAX_MEMBERS = 64;
+
   bool begin();
   bool upsert(const char* uid, const String& name);
   bool update(const char* uid, const String& name, float allowanceGallons,
@@ -20,23 +24,40 @@ class MemberRegistry {
   bool enabledAt(size_t index) const;
   bool healthy() const { return healthy_; }
 
+  // CampNet sync. The registry carries a version that every local edit bumps
+  // past anything seen on the network. A remote snapshot with a newer version
+  // replaces the table; an equal version with different content is merged by
+  // union and re-versioned so every station converges on the same set.
+  uint32_t version() const { return version_; }
+  void noteRemoteVersion(uint32_t version);
+  size_t fillSnapshot(CampNet::MemberEntry* entries, size_t capacity) const;
+  // Returns true if the local table changed (caller should rebroadcast).
+  bool applyRemoteSnapshot(uint8_t fromStationId, uint32_t version,
+                           const CampNet::MemberEntry* entries, size_t count);
+
  private:
-  static constexpr size_t MAX_MEMBERS = 64;
   static constexpr size_t UID_SIZE = 21;
   static constexpr size_t NAME_SIZE = 33;
 
   struct Member {
     char uid[UID_SIZE] = {0};
     char name[NAME_SIZE] = {0};
-    float allowanceGallons = 10.0F;
+    float allowanceGallons = 0.0F;
     bool enabled = true;
   };
 
   int find(const char* uid) const;
   String cleanName(const String& name) const;
   bool save();
+  bool saveVersion();
+  void loadVersion();
+  bool bumpVersionAndSave();
+  bool sameAs(const CampNet::MemberEntry* entries, size_t count) const;
+  static bool entryToMember(const CampNet::MemberEntry& entry, Member& member);
 
   Member members_[MAX_MEMBERS];
   size_t memberCount_ = 0;
+  uint32_t version_ = 0;
+  uint32_t highestSeenVersion_ = 0;
   bool healthy_ = false;
 };

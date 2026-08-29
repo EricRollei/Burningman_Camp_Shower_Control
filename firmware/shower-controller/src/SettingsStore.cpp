@@ -11,6 +11,10 @@ bool SettingsStore::begin() {
 
   bool loadedCalibration = false;
   bool loadedMusicPositions[Config::MUSIC_KNOB_POSITION_COUNT] = {false};
+  for (uint8_t role = 0; role < CampNet::ROLE_COUNT; ++role) {
+    roleLimits_[role].gallons = Config::DEFAULT_ROLE_LIMIT_GALLONS[role];
+    roleLimits_[role].minutes = Config::DEFAULT_ROLE_LIMIT_MINUTES[role];
+  }
   if (SD.exists(Config::SETTINGS_PATH)) {
     File file = SD.open(Config::SETTINGS_PATH, FILE_READ);
     if (!file) return false;
@@ -45,6 +49,23 @@ bool SettingsStore::begin() {
         if (parsed >= 0 && parsed <= 100) {
           speakerVolumePercent_ = static_cast<uint8_t>(parsed);
         }
+      } else if (key.startsWith("limit_") && key.endsWith("_gal")) {
+        const String roleKey = key.substring(6, key.length() - 4);
+        const float parsed = value.toFloat();
+        const int role = roleKey == "shower" ? 0 : roleKey == "water" ? 1 : roleKey == "rv" ? 2 : -1;
+        if (role >= 0 && parsed >= Config::MIN_LIMIT_GALLONS && parsed <= Config::MAX_LIMIT_GALLONS) {
+          roleLimits_[role].gallons = parsed;
+        }
+      } else if (key.startsWith("limit_") && key.endsWith("_min")) {
+        const String roleKey = key.substring(6, key.length() - 4);
+        const long parsed = value.toInt();
+        const int role = roleKey == "shower" ? 0 : roleKey == "water" ? 1 : roleKey == "rv" ? 2 : -1;
+        if (role >= 0 && parsed >= Config::MIN_LIMIT_MINUTES && parsed <= Config::MAX_LIMIT_MINUTES) {
+          roleLimits_[role].minutes = static_cast<uint16_t>(parsed);
+        }
+      } else if (key == "limits_version") {
+        limitsVersion_ = static_cast<uint32_t>(strtoul(value.c_str(), nullptr, 10));
+        highestSeenLimitsVersion_ = limitsVersion_;
       } else if (key == "admin_salt") {
         hasPassword_ = fromHex(value, salt_, sizeof(salt_));
       } else if (key == "admin_hash") {
@@ -158,6 +179,60 @@ bool SettingsStore::setSpeakerVolumePercent(uint8_t percent) {
   return false;
 }
 
+const SettingsStore::RoleLimits& SettingsStore::roleLimits(uint8_t role) const {
+  static RoleLimits fallback;
+  return role < CampNet::ROLE_COUNT ? roleLimits_[role] : fallback;
+}
+
+bool SettingsStore::limitsValid(const RoleLimits limits[CampNet::ROLE_COUNT]) {
+  if (limits == nullptr) return false;
+  for (uint8_t role = 0; role < CampNet::ROLE_COUNT; ++role) {
+    if (!isfinite(limits[role].gallons) ||
+        limits[role].gallons < Config::MIN_LIMIT_GALLONS ||
+        limits[role].gallons > Config::MAX_LIMIT_GALLONS ||
+        limits[role].minutes < Config::MIN_LIMIT_MINUTES ||
+        limits[role].minutes > Config::MAX_LIMIT_MINUTES) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool SettingsStore::setRoleLimits(const RoleLimits limits[CampNet::ROLE_COUNT]) {
+  if (!healthy_ || !limitsValid(limits)) return false;
+  RoleLimits previous[CampNet::ROLE_COUNT];
+  memcpy(previous, roleLimits_, sizeof(previous));
+  const uint32_t previousVersion = limitsVersion_;
+  memcpy(roleLimits_, limits, sizeof(roleLimits_));
+  limitsVersion_ = max(limitsVersion_, highestSeenLimitsVersion_) + 1;
+  highestSeenLimitsVersion_ = limitsVersion_;
+  if (save()) return true;
+  memcpy(roleLimits_, previous, sizeof(roleLimits_));
+  limitsVersion_ = previousVersion;
+  return false;
+}
+
+bool SettingsStore::applyRemoteLimits(uint32_t version, uint8_t fromStationId,
+                                      const RoleLimits limits[CampNet::ROLE_COUNT]) {
+  if (!limitsValid(limits)) return false;
+  if (version > highestSeenLimitsVersion_) highestSeenLimitsVersion_ = version;
+  const bool same = memcmp(limits, roleLimits_, sizeof(roleLimits_)) == 0;
+  const bool newer = version > limitsVersion_;
+  const bool tieBreak = version == limitsVersion_ && !same &&
+                        fromStationId < Config::STATION_ID_VALUE;
+  if (!newer && !tieBreak) return false;
+  if (!healthy_) return false;
+  RoleLimits previous[CampNet::ROLE_COUNT];
+  memcpy(previous, roleLimits_, sizeof(previous));
+  const uint32_t previousVersion = limitsVersion_;
+  memcpy(roleLimits_, limits, sizeof(roleLimits_));
+  limitsVersion_ = version;
+  if (save()) return true;
+  memcpy(roleLimits_, previous, sizeof(roleLimits_));
+  limitsVersion_ = previousVersion;
+  return false;
+}
+
 bool SettingsStore::setPassword(const String& password) {
   if (!healthy_ || password.length() < 8 || password.length() > 64) return false;
   uint8_t previousSalt[sizeof(salt_)];
@@ -198,6 +273,12 @@ bool SettingsStore::save() {
       file.printf("music_knob_%u,%u\n", i, musicKnobPositions_[i]);
     }
   }
+  static const char* const roleKeys[CampNet::ROLE_COUNT] = {"shower", "water", "rv"};
+  for (uint8_t role = 0; role < CampNet::ROLE_COUNT; ++role) {
+    file.printf("limit_%s_gal,%.3f\n", roleKeys[role], roleLimits_[role].gallons);
+    file.printf("limit_%s_min,%u\n", roleKeys[role], roleLimits_[role].minutes);
+  }
+  file.printf("limits_version,%lu\n", static_cast<unsigned long>(limitsVersion_));
   file.printf("admin_salt,%s\n", toHex(salt_, sizeof(salt_)).c_str());
   file.printf("admin_hash,%s\n", toHex(passwordHash_, sizeof(passwordHash_)).c_str());
   file.flush();

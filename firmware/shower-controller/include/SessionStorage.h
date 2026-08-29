@@ -20,6 +20,11 @@ class SessionStorage {
               const char* reason);
   float gallonsFor(const char* uid) const;
   uint32_t sessionsFor(const char* uid) const;
+  // Per-wristband totals for this station, used for CampNet usage snapshots.
+  size_t totalCount() const { return totalCount_; }
+  const char* totalUidAt(size_t index) const { return index < totalCount_ ? totals_[index].uid : ""; }
+  float totalGallonsAt(size_t index) const { return index < totalCount_ ? totals_[index].gallons : 0.0F; }
+  uint32_t totalSessionsAt(size_t index) const { return index < totalCount_ ? totals_[index].sessions : 0; }
   size_t recentCount() const { return recentCount_; }
   const Record& recentAt(size_t index) const;
   bool healthy() const { return healthy_; }

@@ -3,17 +3,19 @@
 #include <Arduino.h>
 #include <WebServer.h>
 
+#include "CampNet.h"
 #include "MemberRegistry.h"
 #include "PulseStorage.h"
 #include "SessionStorage.h"
 #include "SettingsStore.h"
 #include "SpeakerAudio.h"
+#include "UsageLedger.h"
 
 class AdminServer {
  public:
   AdminServer(MemberRegistry& registry, const PulseStorage& pulseStorage,
               const SessionStorage& sessions, SettingsStore& settings,
-              SpeakerAudio& speakerAudio);
+              SpeakerAudio& speakerAudio, const UsageLedger& ledger, CampNetLink& net);
 
   bool begin();
   void handle();
@@ -53,6 +55,7 @@ class AdminServer {
   void captureMusicCalibration();
   void cancelMusicCalibration();
   void setSpeakerVolume();
+  void setRoleLimits();
   void handleAudioUpload();
   bool authorize();
   void sendJsonMessage(int code, bool ok, const String& message);
@@ -64,6 +67,8 @@ class AdminServer {
   const SessionStorage& sessions_;
   SettingsStore& settings_;
   SpeakerAudio& speakerAudio_;
+  const UsageLedger& ledger_;
+  CampNetLink& net_;
   bool started_ = false;
   bool enrollmentPending_ = false;
   String pendingName_;
