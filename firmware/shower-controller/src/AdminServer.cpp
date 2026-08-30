@@ -19,6 +19,7 @@ button{font:inherit;font-weight:800;border:0;border-radius:11px;padding:12px 15p
 .actions{display:flex;gap:9px;margin-top:12px;flex-wrap:wrap}.status{padding:13px;border-left:4px solid var(--a);background:#0d2522;border-radius:7px}.member{padding:15px 0;border-top:1px solid #31534d}.member:first-child{border-top:0}.head{display:flex;justify-content:space-between;gap:10px}.uid{font:12px ui-monospace,monospace;color:var(--muted)}.usage{color:var(--a);font-weight:700}.disabled{color:var(--warn)}
 table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;padding:9px 5px;border-bottom:1px solid #31534d}th{color:var(--muted)}
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0 0}.tab.on{background:var(--a);color:#052019}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--danger);margin-right:7px}.dot.on{background:#0a5}.off .card{opacity:.45;pointer-events:none}#msg{min-height:1.4em}
+.systems{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}.sys{padding:10px 12px;border-radius:12px;background:#0b211f;border-left:4px solid var(--muted)}.sys.ok{border-color:var(--a)}.sys.bad{border-color:var(--danger)}.sys.unknown{border-color:var(--warn)}.relay-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.relay-state{font-family:ui-monospace,monospace}
 </style></head><body><main><div class="eyebrow">Camp network · secured</div><h1>Camp Water Admin</h1><p class="lede">One login, every station. Signed in at <span id="here">…</span></p>
 <div id="status" class="status">Connecting…</div><div class="grid"><section class="card"><div class="eyebrow">Camp-wide</div><div class="stat"><span id="total">0.00</span> gal</div><small>Completed usage across every station</small><p id="peers" style="margin:10px 0 0">Network: —</p></section>
 <section class="card"><div class="eyebrow">Enroll wristband</div><label for="name">Member name</label><input id="name" maxlength="32" placeholder="e.g. Dusty River"><label for="enrollAt">Enroll on (tap the wristband on that station's reader)</label><select id="enrollAt"></select><div class="actions"><button id="arm">Enroll next tag</button><button id="cancel" class="secondary">Cancel</button></div></section></div>
@@ -31,11 +32,15 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;p
 <div id="musicCards" class="grid"><section class="card"><h2>Shower speaker</h2><p id="audioStatus">Connecting…</p><label for="speakerVolume">Volume: <span id="speakerVolumeValue">—</span>%</label><input id="speakerVolume" type="range" min="0" max="100" step="1"><div class="actions"><button id="saveVolume">Set volume</button><button id="tone">Test tone</button><button id="play">Play channel 1</button><button id="stopAudio" class="secondary">Stop</button><button id="findSpeaker" class="secondary">Find speaker</button></div><label for="audioFile" id="uploadLabel">Replace channel 1</label><input id="audioFile" type="file"><div class="actions"><button id="uploadAudio" class="secondary">Upload audio</button></div><small>The Tough reconnects to a speaker named “Select 4 Go”.</small></section>
 <section class="card"><h2>Music vibe selector</h2><p id="knobStatus">Connecting…</p><div class="stat"><span id="knobRaw">—</span><small> / 4095 raw</small></div><p id="knobPoints"></p><div class="actions"><button id="knobCalStart">Start calibration</button><button id="knobCapture">Capture position 0</button><button id="knobCalCancel" class="secondary">Cancel</button></div><small>Notch 0 is quiet; 1–9 are channels. Capture each notch in order.</small></section></div>
 <section class="card"><h2>Recent sessions</h2><div style="overflow:auto"><table><thead><tr><th>Member</th><th>Gallons</th><th>Duration</th><th>Ended</th></tr></thead><tbody id="sessions"></tbody></table></div></section>
-<section class="card"><h2>Controller</h2><p id="health">Connecting…</p><div class="actions"><button id="reboot" class="danger">Reboot controller</button></div><small>Reboot is safe: the pump is shut off first.</small></section>
+<section class="card" id="relayCard"><h2>Relay &amp; power</h2><p>Assignments are local to this station. Saving briefly clears every output, then restores accessory power.</p><div class="relay-grid"><label>Pump<select id="pumpRelay"></select></label><label>Phone charger<select id="chargerRelay"></select></label><label>LED / speaker / outer display<select id="accessoryRelay"></select></label></div><div class="actions"><button id="saveRelays">Save assignments</button><button id="accessoryPower" class="secondary">Accessory power</button></div><div id="relayState" class="relay-state"></div><div class="actions" id="relayTests"></div><small>Tests energize the selected physical channel for at most 5 seconds. Outputs are commanded only; downstream loads are not electrically monitored.</small></section>
+<section class="card"><h2>System health</h2><div id="health" class="systems">Connecting…</div><div class="actions"><button id="reboot" class="danger">Reboot controller</button></div><small>Reboot shuts every relay off before restarting.</small></section>
 </div></main><script>
 const $=s=>document.querySelector(s),T=(i,v)=>$('#'+i).textContent=v,D=(i,v)=>$('#'+i).disabled=v,F=(v,d)=>Number(v).toFixed(d),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),DS=['OPEN','IN USE','UNAVAILABLE'];
 let S=[],sel=+localStorage.tab||0,busy=false;const nm=id=>(S.find(x=>x.id==id)||{}).name||'Station '+id,LIM=[['Shower','shower'],['Water fill','water'],['RV fill','rv']];
 $('#limits').innerHTML=LIM.map(([n,k])=>`<tr><td>${n}</td><td><input id="${k}Gal" type="number" min="0.5" max="500" step="0.5"></td><td><input id="${k}Min" type="number" min="1" max="180"></td></tr>`).join('');
+const relayOptions=allowNone=>(allowNone?'<option value="0">Not assigned</option>':'')+[1,2,3,4].map(x=>`<option value="${x}">Relay ${x}</option>`).join('');
+$('#pumpRelay').innerHTML=relayOptions(false);$('#chargerRelay').innerHTML=relayOptions(true);$('#accessoryRelay').innerHTML=relayOptions(true);
+$('#relayTests').innerHTML=[1,2,3,4].map(x=>`<button class="secondary relayTest" data-channel="${x}">Test relay ${x}</button>`).join('')+'<button id="stopRelayTest" class="danger">Stop test</button>';
 async function post(path,data={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});const j=await r.json();if(!r.ok)throw Error(j.message||'Request failed');return j}
 async function cmd(action,extra={},station=sel){try{const j=await post('/api/command',{station,action,...extra});let m=j.message;if(j.pending){m='';for(let i=0;i<13&&!m;i++){await new Promise(x=>setTimeout(x,300));const q=await(await fetch('/api/command?nonce='+j.nonce)).json();if(q.state=='done')m=(q.ok?'':'Rejected: ')+(q.message||'');else if(q.state!='pending')break}m=m||'No answer from '+nm(station)}T('msg',nm(station)+': '+m);refresh()}catch(e){alert(e.message)}}
 function pick(id){sel=id;localStorage.tab=id;render()}
@@ -45,7 +50,7 @@ const L=s.limits,lim=[];LIM.forEach(([n,k])=>lim.push([k+'Gal',L[k].gal],[k+'Min
 const ea=$('#enrollAt'),ev=ea.value;ea.innerHTML=S.map(x=>`<option value="${x.id}">${esc(x.name)}${x.online?'':' (offline)'}</option>`).join('');ea.value=ev;if(!ea.value)ea.value=s.stationId;
 let total=0;$('#members').innerHTML=m.length?m.map(x=>{total+=x.networkGallons;return `<div class="member"><div class="head"><div><strong>${esc(x.name)}</strong> ${x.enabled?'':'<span class="disabled">disabled</span>'}<div class="uid">${esc(x.uid)}</div></div><div class="usage">${F(x.networkGallons,2)} gal total<br><small>showers ${F(x.showerGallons,1)} · water ${F(x.waterGallons,1)} · RV ${F(x.rvGallons,1)}</small></div></div><div class="actions"><button class="secondary" onclick="editMember('${x.uid}','${encodeURIComponent(x.name)}',${x.allowance},${x.enabled})">Edit · ${x.allowance>0?F(x.allowance,1)+' gal shower limit':'station limits'}</button><button class="danger" onclick="removeMember('${x.uid}')">Delete</button></div></div>`}).join(''):'<small>No members enrolled.</small>';T('total',total.toFixed(2));
 render()}catch(e){T('status','Controller not responding — retrying…')}finally{clearTimeout(tm);busy=false}}
-function render(){const c=S.find(x=>x.id==sel)||S.find(x=>x.local);if(!c)return;sel=c.id;const t=c.telemetry,se=t.session,h=t.health,on=t.speaker==='connected';
+function render(){const c=S.find(x=>x.id==sel)||S.find(x=>x.local);if(!c)return;sel=c.id;const t=c.telemetry,se=t.session,h=t.health,on=t.speaker==='connected',rr=t.relay||{},relaySupported=!!t.features.relayConfig,idle=!se.active&&!t.calibrationActive&&!rr.testActive;
 $('#tabs').innerHTML=S.map(x=>`<button class="tab${x.id==sel?' on':''}" onclick="pick(${x.id})"><span class="dot${x.online?' on':''}"></span>${esc(x.name)} · ${x.online?DS[x.telemetry.session.doorState]||'?':'OFFLINE'}</button>`).join('');
 const w=S.find(x=>x.telemetry.enrollmentPending);T('status',w?`Waiting for ${w.telemetry.pendingName}'s wristband at ${w.name} — tap it now.`:`${c.name}: ${t.message}`);
 $('#st').classList.toggle('off',!c.online);T('stName',`${c.name} · ${c.roleName}${c.local?' · this station':''}${c.online?'':' · OFFLINE'}`);
@@ -55,7 +60,13 @@ T('audioStatus',`Speaker: ${t.speaker} · ${t.audioPlayback} · channel tracks $
 D('uploadAudio',!c.local);D('audioFile',!c.local);T('uploadLabel',c.local?'Replace channel 1 (44.1 kHz stereo signed 16-bit PCM)':`Upload is local only — join ${c.name}'s Wi-Fi`);
 T('knobRaw',t.musicKnobRaw);T('knobStatus',t.musicCalibrationActive?`Calibrating · move the knob to notch ${t.musicCalibrationNext} and capture`:`Position ${t.musicChannel} · ${t.musicChannelName} · ${t.musicKnobCalibrated?'calibrated':'using test thresholds'}`);T('knobPoints',t.musicPositions.map((x,i)=>`${i}: ${x===null?'—':x}`).join(' · '));D('knobCalStart',t.musicCalibrationActive);D('knobCapture',!t.musicCalibrationActive);T('knobCapture',`Capture position ${t.musicCalibrationNext}`);D('knobCalCancel',!t.musicCalibrationActive);
 $('#sessions').innerHTML=c.recent.length?c.recent.map(x=>`<tr><td>${esc(x.name)}</td><td>${F(x.gallons,2)}</td><td>${x.durationS}s</td><td>${esc(x.reason)}</td></tr>`).join(''):'<tr><td colspan="4">No completed sessions</td></tr>';
-T('health',`Uptime ${Math.floor(h.uptimeS/60)} min · heap ${Math.round(h.freeHeap/1024)}k free (low ${Math.round(h.minFreeHeap/1024)}k) · WiFi clients ${h.wifiClients} · hub ${h.hub?'ok':'DOWN'} · relay ${h.relay?'ok':'DOWN'} · RFID ${h.rfid?'ok':'DOWN'} · SD ${h.sd?'ok':'DOWN'} · audio underruns ${h.audioUnderruns}`)}
+for(const[id,v]of[['pumpRelay',rr.pump],['chargerRelay',rr.charger],['accessoryRelay',rr.accessory]])if(document.activeElement!==$('#'+id))$('#'+id).value=v||0;
+const roles={};if(rr.pump)roles[rr.pump]='pump';if(rr.charger)roles[rr.charger]='charger';if(rr.accessory)roles[rr.accessory]='accessory';const relayOn=ch=>!!(rr.state&(1<<(4-ch)));
+T('relayState',relaySupported?[1,2,3,4].map(ch=>`Relay ${ch}: ${roles[ch]||'unassigned'} · commanded ${relayOn(ch)?'ON':'off'}`).join(' | ')+(rr.testActive?` | TESTING RELAY ${rr.testChannel}`:''):'Update this station firmware to configure relays');
+T('accessoryPower',rr.accessoryEnabled?'Turn accessory off':'Turn accessory on');D('saveRelays',!relaySupported||!idle);D('accessoryPower',!relaySupported||!idle);document.querySelectorAll('.relayTest').forEach(b=>b.disabled=!relaySupported||!idle||!h.relay);D('stopRelayTest',!relaySupported||!rr.testActive);
+const sys=(name,kind,detail)=>`<div class="sys ${kind}"><strong>${esc(name)}</strong><br><small>${esc(detail)}</small></div>`,accessoryCommanded=rr.accessory&&rr.accessoryEnabled&&relayOn(rr.accessory);
+let systems=sys('Controller link',c.online?'ok':'bad',c.online?`online · uptime ${Math.floor(h.uptimeS/60)} min · heap ${Math.round(h.freeHeap/1024)}k`:'offline')+sys('SD storage',h.sd?'ok':'bad',h.sd?'read/write services healthy':'storage service unavailable')+sys('PaHUB',h.hub?'ok':'bad',h.hub?'responding over I²C':'not responding')+sys('4Relay module',h.relay?'ok':'bad',h.relay?'responding; states are commanded':'not responding')+sys('RFID reader',h.rfid?'ok':'bad',h.rfid?'responding over I²C':'not responding')+sys('Flow input','unknown',`unmonitored · calibration ${F(t.pulsesPerGallon,2)} pulses/gal`);
+if(t.features.music)systems+=sys('Bluetooth speaker',on?'ok':'unknown',on?`connected · ${t.audioPlayback}`:`${t.speaker} · not a controller fault`);if(t.features.leds)systems+=sys('LED power','unknown',`${accessoryCommanded?'commanded on':'commanded off'} · load unmonitored`);if(t.features.doorSign)systems+=sys('Outer display','unknown',`${accessoryCommanded?'power commanded on':'power commanded off'} · device unmonitored`);systems+=sys('Phone charger','unknown',`${rr.charger&&relayOn(rr.charger)?'commanded on':'commanded off'} · load unmonitored`);$('#health').innerHTML=systems}
 $('#arm').onclick=()=>cmd('enroll',{name:$('#name').value.trim()},+$('#enrollAt').value);$('#cancel').onclick=()=>cmd('cancel',{},+$('#enrollAt').value);
 async function editMember(uid,name,allowance,enabled){name=decodeURIComponent(name);const nextName=prompt('Member name',name);if(!nextName)return;const nextAllowance=prompt('Custom shower limit in gallons (0 = station limit)',allowance);if(nextAllowance===null||nextAllowance==='')return;const nextEnabled=confirm('Allow this wristband to start sessions?');try{await post('/api/member',{uid,name:nextName,allowance:nextAllowance,enabled:nextEnabled?'1':'0'});refresh()}catch(e){alert(e.message)}}
 async function removeMember(uid){if(!confirm('Delete this wristband registration? Historical usage remains.'))return;await post('/api/delete',{uid});refresh()}
@@ -65,6 +76,9 @@ $('#changePassword').onclick=async()=>{try{await post('/api/password',{password:
 $('#speakerVolume').oninput=()=>T('speakerVolumeValue',$('#speakerVolume').value);$('#saveVolume').onclick=()=>cmd('volume',{volume:$('#speakerVolume').value});
 $('#uploadAudio').onclick=async()=>{const f=$('#audioFile').files[0];if(!f)return alert('Choose a PCM file first');const body=new FormData();body.append('audio',f);T('audioStatus',`Uploading ${f.name}…`);const r=await fetch('/api/audio/upload',{method:'POST',body});const j=await r.json();if(!r.ok)return alert(j.message||'Upload failed');refresh()};
 $('#saveLimits').onclick=async()=>{const d={};LIM.forEach(([n,k])=>['Gal','Min'].forEach(u=>d[k+u]=$('#'+k+u).value));try{await post('/api/limits',d);refresh()}catch(e){alert(e.message)}};
+$('#saveRelays').onclick=()=>{const pump=+$('#pumpRelay').value,charger=+$('#chargerRelay').value,accessory=+$('#accessoryRelay').value;if(new Set([pump,charger,accessory].filter(Boolean)).size!==[pump,charger,accessory].filter(Boolean).length)return alert('Each assigned role must use a different relay channel.');if(confirm(`Save relay assignments for ${nm(sel)}? Every output will briefly turn off.`))cmd('relayConfig',{pump,charger,accessory,accessoryEnabled:(S.find(x=>x.id==sel).telemetry.relay.accessoryEnabled?1:0)})};
+$('#accessoryPower').onclick=()=>{const r=S.find(x=>x.id==sel).telemetry.relay,on=!r.accessoryEnabled;if(confirm(`${on?'Enable':'Disable'} accessory power at ${nm(sel)}?`))cmd('accessoryPower',{enabled:on?1:0})};
+document.querySelectorAll('.relayTest').forEach(b=>b.onclick=()=>{const channel=+b.dataset.channel;if(confirm(`Energize physical relay ${channel} at ${nm(sel)} for up to 5 seconds? This may run a pump or unknown load.`))cmd('relayTestStart',{channel})});$('#stopRelayTest').onclick=()=>cmd('relayTestStop');
 $('#endSession').onclick=()=>{if(confirm(`End the active session at ${nm(sel)}?`))cmd('endSession')};$('#reboot').onclick=()=>{if(confirm(`Reboot ${nm(sel)}?`))cmd('reboot')};
 refresh();setInterval(refresh,2000);
 </script></body></html>)HTML";
@@ -93,6 +107,10 @@ const ActionName ACTION_NAMES[] = {
     {"findSpeaker", CampNet::CMD_SPEAKER_SEARCH},
     {"reboot", CampNet::CMD_REBOOT},
     {"endSession", CampNet::CMD_END_SESSION},
+    {"relayConfig", CampNet::CMD_RELAY_CONFIG},
+    {"accessoryPower", CampNet::CMD_ACCESSORY_POWER},
+    {"relayTestStart", CampNet::CMD_RELAY_TEST_START},
+    {"relayTestStop", CampNet::CMD_RELAY_TEST_STOP},
 };
 
 uint8_t actionFromName(const String& name) {
@@ -126,6 +144,24 @@ bool parseVolume(const String& value, long& percent) {
   }
   percent = value.toInt();
   return percent >= 0 && percent <= 100;
+}
+
+bool parseRelayConfig(const String& value, SettingsStore::RelayConfig& config) {
+  int fields[4] = {0};
+  int start = 0;
+  for (uint8_t i = 0; i < 4; ++i) {
+    const int comma = value.indexOf(',', start);
+    if ((i < 3 && comma < 0) || (i == 3 && comma >= 0)) return false;
+    const String part = comma < 0 ? value.substring(start) : value.substring(start, comma);
+    if (part.length() != 1 || !isDigit(part[0])) return false;
+    fields[i] = part.toInt();
+    start = comma + 1;
+  }
+  config.pump = static_cast<uint8_t>(fields[0]);
+  config.charger = static_cast<uint8_t>(fields[1]);
+  config.accessory = static_cast<uint8_t>(fields[2]);
+  config.accessoryEnabled = fields[3] == 1;
+  return fields[3] <= 1 && SettingsStore::relayConfigValid(config);
 }
 
 // Bounded copy of a packet char array that may lack a terminator.
@@ -238,6 +274,31 @@ void AdminServer::reportHardware(bool hubReady, bool relayReady, bool rfidReady)
   hubReady_ = hubReady;
   relayReady_ = relayReady;
   rfidReady_ = rfidReady;
+}
+
+void AdminServer::reportRelays(uint8_t state, bool testActive, uint8_t testChannel) {
+  relayState_ = state;
+  relayTestActive_ = testActive;
+  relayTestChannel_ = testActive ? testChannel : 0;
+}
+
+bool AdminServer::takeRelayPolicyApplyRequest() {
+  const bool requested = relayPolicyApplyRequested_;
+  relayPolicyApplyRequested_ = false;
+  return requested;
+}
+
+bool AdminServer::takeRelayTestStartRequest(uint8_t& channel) {
+  if (!relayTestStartRequested_) return false;
+  relayTestStartRequested_ = false;
+  channel = requestedRelayTestChannel_;
+  return true;
+}
+
+bool AdminServer::takeRelayTestStopRequest() {
+  const bool requested = relayTestStopRequested_;
+  relayTestStopRequested_ = false;
+  return requested;
 }
 
 void AdminServer::reportSession(const char* activeName, float sessionGallons,
@@ -409,7 +470,8 @@ void AdminServer::buildTelemetry(CampNet::TelemetryPacket& t) const {
                (Config::HAS_DOOR_SIGN ? CampNet::FEATURE_DOOR_SIGN : 0) |
                (enrollmentPending_ ? CampNet::FEATURE_ENROLL_PENDING : 0) |
                (knobCalibrated ? CampNet::FEATURE_MUSIC_CALIBRATED : 0) |
-               (pumpOn_ ? CampNet::FEATURE_PUMP_ON : 0);
+               (pumpOn_ ? CampNet::FEATURE_PUMP_ON : 0) |
+               CampNet::FEATURE_RELAY_CONFIG;
   t.doorState = doorState_;
   t.wifiClients = WiFi.softAPgetStationNum();
   t.speakerVolume = speakerAudio_.speakerVolumePercent();
@@ -421,6 +483,14 @@ void AdminServer::buildTelemetry(CampNet::TelemetryPacket& t) const {
   strlcpy(t.playback, speakerAudio_.playbackLabel(), sizeof(t.playback));
   strlcpy(t.calibrationMessage, calibrationMessage_.c_str(), sizeof(t.calibrationMessage));
   strlcpy(t.message, lastMessage_.c_str(), sizeof(t.message));
+  const SettingsStore::RelayConfig& relayConfig = settings_.relayConfig();
+  t.relayState = relayState_;
+  t.pumpRelay = relayConfig.pump;
+  t.chargerRelay = relayConfig.charger;
+  t.accessoryRelay = relayConfig.accessory;
+  t.relayFlags = (relayConfig.accessoryEnabled ? CampNet::RELAY_ACCESSORY_ENABLED : 0) |
+                 (relayTestActive_ ? CampNet::RELAY_TEST_ACTIVE : 0);
+  t.relayTestChannel = relayTestChannel_;
 }
 
 void AdminServer::buildRecent(CampNet::RecentPacket& r) const {
@@ -444,7 +514,7 @@ String AdminServer::telemetryJson(const CampNet::TelemetryPacket& t) const {
       t.musicChannel >= 0 && t.musicChannel < Config::MUSIC_KNOB_POSITION_COUNT
           ? static_cast<uint8_t>(t.musicChannel) : 0;
   String body;
-  body.reserve(1024);
+  body.reserve(1280);
   body += "{\"calibrationActive\":"; body += boolJson(t.flags & CampNet::TELEM_CALIBRATION_ACTIVE);
   body += ",\"calibrationPulses\":" + String(t.calibrationPulses);
   body += ",\"calibrationMessage\":\"" + jsonEscape(field(t.calibrationMessage)) + "\"";
@@ -471,6 +541,14 @@ String AdminServer::telemetryJson(const CampNet::TelemetryPacket& t) const {
   body += ",\"features\":{\"music\":"; body += boolJson(t.features & CampNet::FEATURE_MUSIC);
   body += ",\"leds\":"; body += boolJson(t.features & CampNet::FEATURE_LEDS);
   body += ",\"doorSign\":"; body += boolJson(t.features & CampNet::FEATURE_DOOR_SIGN);
+  body += ",\"relayConfig\":"; body += boolJson(t.features & CampNet::FEATURE_RELAY_CONFIG);
+  body += "},\"relay\":{\"state\":" + String(t.relayState);
+  body += ",\"pump\":" + String(t.pumpRelay);
+  body += ",\"charger\":" + String(t.chargerRelay);
+  body += ",\"accessory\":" + String(t.accessoryRelay);
+  body += ",\"accessoryEnabled\":"; body += boolJson(t.relayFlags & CampNet::RELAY_ACCESSORY_ENABLED);
+  body += ",\"testActive\":"; body += boolJson(t.relayFlags & CampNet::RELAY_TEST_ACTIVE);
+  body += ",\"testChannel\":" + String(t.relayTestChannel);
   body += "},\"health\":{\"uptimeS\":" + String(t.uptimeS);
   body += ",\"freeHeap\":" + String(t.freeHeap);
   body += ",\"minFreeHeap\":" + String(t.minFreeHeap);
@@ -512,7 +590,7 @@ String AdminServer::recentJson(const CampNet::RecentPacket& r) const {
 
 String AdminServer::stationsJson() const {
   String body;
-  body.reserve(1600 * (net_.peerCount() + 1) + 4);
+  body.reserve(1900 * (net_.peerCount() + 1) + 4);
   body += '[';
   bool first = true;
   CampNet::TelemetryPacket telemetry;
@@ -637,6 +715,63 @@ int AdminServer::runAction(uint8_t action, const String& text, float value, Stri
       lastMessage_ = "Session end requested";
       message = "Ending session";
       return 200;
+    case CampNet::CMD_RELAY_CONFIG: {
+      if (activeName_[0] != '\0' || calibrationActive_ || relayTestActive_) {
+        message = "Relay configuration requires an idle station";
+        return 409;
+      }
+      SettingsStore::RelayConfig config;
+      if (!parseRelayConfig(text, config)) {
+        message = "Pump must use 1-4; auxiliary relays use 0-4 and assignments must be unique";
+        return 400;
+      }
+      if (!settings_.setRelayConfig(config)) {
+        message = "Could not save relay configuration to SD card";
+        return 503;
+      }
+      relayPolicyApplyRequested_ = true;
+      lastMessage_ = relayReady_ ? "Relay configuration saved" : "Relay configuration saved; awaiting module";
+      message = lastMessage_;
+      return 200;
+    }
+    case CampNet::CMD_ACCESSORY_POWER: {
+      if (activeName_[0] != '\0' || calibrationActive_ || relayTestActive_) {
+        message = "Accessory power changes require an idle station";
+        return 409;
+      }
+      if (value != 0.0F && value != 1.0F) {
+        message = "Accessory state must be 0 or 1";
+        return 400;
+      }
+      const bool enabled = value == 1.0F;
+      if (!settings_.setAccessoryEnabled(enabled)) {
+        message = "Could not save accessory power setting to SD card";
+        return 503;
+      }
+      relayPolicyApplyRequested_ = true;
+      lastMessage_ = enabled ? "Accessory rail enabled" : "Accessory rail disabled";
+      message = lastMessage_;
+      return 200;
+    }
+    case CampNet::CMD_RELAY_TEST_START: {
+      const uint8_t channel = static_cast<uint8_t>(value);
+      if (activeName_[0] != '\0' || calibrationActive_ || relayTestActive_) {
+        message = "Relay testing requires an idle station";
+        return 409;
+      }
+      if (!relayReady_) { message = "Relay module unavailable"; return 503; }
+      if (channel < 1 || channel > 4) { message = "Relay channel must be 1-4"; return 400; }
+      requestedRelayTestChannel_ = channel;
+      relayTestStartRequested_ = true;
+      relayTestActive_ = true;
+      relayTestChannel_ = channel;
+      message = String("Testing relay ") + channel + " for 5 seconds";
+      return 200;
+    }
+    case CampNet::CMD_RELAY_TEST_STOP:
+      relayTestStopRequested_ = true;
+      message = relayTestActive_ ? "Stopping relay test" : "Relay outputs restored";
+      return 200;
     default:
       message = "Unknown action";
       return 400;
@@ -664,6 +799,16 @@ void AdminServer::drainRemoteCommands() {
         if (argLen >= sizeof(float)) memcpy(&value, command.args, sizeof(float));
         break;
       case CampNet::CMD_AUDIO_VOLUME:
+        value = argLen >= 1 ? static_cast<float>(command.args[0]) : -1.0F;
+        break;
+      case CampNet::CMD_RELAY_CONFIG:
+        if (argLen >= 4) {
+          text = String(command.args[0]) + ',' + String(command.args[1]) + ',' +
+                 String(command.args[2]) + ',' + String(command.args[3]);
+        }
+        break;
+      case CampNet::CMD_ACCESSORY_POWER:
+      case CampNet::CMD_RELAY_TEST_START:
         value = argLen >= 1 ? static_cast<float>(command.args[0]) : -1.0F;
         break;
       default:
@@ -707,6 +852,37 @@ void AdminServer::handleCommandPost() {
       if (!parseVolume(server_.arg("volume"), percent)) return sendJsonMessage(400, false, "Volume must be 0-100");
       value = static_cast<float>(percent);
       args[0] = static_cast<uint8_t>(percent);
+      argLen = 1;
+      break;
+    }
+    case CampNet::CMD_RELAY_CONFIG: {
+      SettingsStore::RelayConfig config;
+      text = server_.arg("pump") + ',' + server_.arg("charger") + ',' +
+             server_.arg("accessory") + ',' + server_.arg("accessoryEnabled");
+      if (!parseRelayConfig(text, config)) {
+        return sendJsonMessage(400, false,
+                               "Pump must use 1-4; auxiliary relays use 0-4 and assignments must be unique");
+      }
+      args[0] = config.pump;
+      args[1] = config.charger;
+      args[2] = config.accessory;
+      args[3] = config.accessoryEnabled ? 1 : 0;
+      argLen = 4;
+      break;
+    }
+    case CampNet::CMD_ACCESSORY_POWER: {
+      const String enabled = server_.arg("enabled");
+      if (enabled != "0" && enabled != "1") return sendJsonMessage(400, false, "Accessory state must be 0 or 1");
+      value = enabled == "1" ? 1.0F : 0.0F;
+      args[0] = enabled == "1" ? 1 : 0;
+      argLen = 1;
+      break;
+    }
+    case CampNet::CMD_RELAY_TEST_START: {
+      const long channel = server_.arg("channel").toInt();
+      if (channel < 1 || channel > 4) return sendJsonMessage(400, false, "Relay channel must be 1-4");
+      value = static_cast<float>(channel);
+      args[0] = static_cast<uint8_t>(channel);
       argLen = 1;
       break;
     }

@@ -274,9 +274,9 @@ void CampNetLink::dispatch(const uint8_t* data, int length) {
       break;
     }
     case CampNet::PKT_TELEMETRY: {
-      if (length < static_cast<int>(sizeof(CampNet::TelemetryPacket))) return;
-      CampNet::TelemetryPacket packet;
-      memcpy(&packet, data, sizeof(packet));
+      if (length < static_cast<int>(CampNet::TELEMETRY_LEGACY_BYTES)) return;
+      CampNet::TelemetryPacket packet = {};
+      memcpy(&packet, data, min(static_cast<size_t>(length), sizeof(packet)));
       handleTelemetry(packet);
       break;
     }

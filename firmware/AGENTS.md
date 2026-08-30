@@ -66,25 +66,27 @@ clearly that only source review was performed.
 
 Treat pump and relay behavior as safety-critical.
 
-- Boot, session exit, timeout, storage failure, and relay communication failure
-  must leave all relays off.
+- Boot and reboot must command all relays off before restoring configured
+  accessory power. Session exit, timeout, and storage failure must turn the
+  pump and phone-charger roles off; the accessory role follows its persistent
+  admin setting. Relay communication failure must attempt all-off, and recovery
+  must begin all-off before restoring the accessory role.
 - The pump must never start merely from an RFID scan. A valid active session
-  and a first explicit start action are required: either the GPIO14 button or
-  a tap on the on-screen START circle. The next action ends the session and
-  turns the pump off; it does not merely pause the water. Both inputs go
-  through the same `toggleShowerWater()` path; do not add a second one.
-- The Tough touchscreen carries only the backup START/STOP circle on the
-  in-progress screen; keep every other screen display-only. Touch must use
-  the press edge plus `TOUCH_DEBOUNCE_MS`, never level or repeat events.
-  Preserve the post-session gallons and elapsed-time summary before returning
-  to the ready screen.
+  and a first explicit GPIO14 pump-button press are required. The next press
+  ends the session and turns the pump off; it does not merely pause the water.
+  Flow calibration and an explicitly confirmed, idle-only, five-second raw
+  relay test are the only intentional non-session paths that may energize the
+  pump channel.
+- Keep the Tough touchscreen display-only. Preserve the post-session gallons
+  and elapsed-time summary before returning to the ready screen.
 - Unknown or disabled tags must not open a session or terminate another
   member's session. A different authorized tag ends the prior session with
   reason `HANDOFF` before starting the new member's session.
 - Preserve the session gallon limit and the 20-minute safety timeout unless a
   requirements change explicitly calls for different behavior.
-- Calibration is the one intentional flow-calibration path that energizes the
-  pump. It must retain a bounded timeout and a reliable stop path.
+- Calibration must retain a bounded timeout and a reliable stop path. Raw relay
+  tests must retain their firmware-owned timeout and immediate stop path even
+  if the admin browser disconnects.
 - Never connect or document 5 V or 12 V as safe for an ESP32 GPIO. Preserve the
   protected GPIO26 flow input, the GPIO36 3.3 V potentiometer wiring, common
   grounds, and separately powered LED-strip guidance.
@@ -97,9 +99,10 @@ Treat pump and relay behavior as safety-critical.
 - Unauthenticated CampNet traffic (STATUS/USAGE/MEMBERS/LIMITS/TELEMETRY/
   RECENT) only updates data: ledger, registry, limits, telemetry tables. Only
   HMAC-signed COMMAND packets may act, and the only relay-adjacent actions are
-  the same ones the local admin page has (calibration start/stop, end
-  session, reboot). A remote command must never open a session or turn the
-  pump on for one. Keep `CampNet::SECRET` and the Wi-Fi password private.
+  the same ones the local admin page has (calibration, relay configuration and
+  bounded testing, end session, reboot). A remote command must never open a
+  session or turn the pump on for normal operation. Keep `CampNet::SECRET` and
+  the Wi-Fi password private.
 - Keep large CPU-only tables out of static/BSS memory: internal DRAM on the
   Tough is within a few tens of KB of exhaustion with Bluetooth + Wi-Fi up.
   Allocate them with `psramArray<>()` (`include/PsramAlloc.h`) in `begin()`,

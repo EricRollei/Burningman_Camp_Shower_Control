@@ -301,7 +301,7 @@ Each relay is rated by M5Stack for:
 
 The relay contacts are electrically independent of the 5V control circuitry.
 
-The current proposed relay functions are:
+One planned physical wiring arrangement is:
 
 | Relay | Function |
 |------|----------|
@@ -310,7 +310,13 @@ The current proposed relay functions are:
 | CH3 | LED / entertainment power |
 | CH4 | Utility lighting or future use |
 
-The exact assignment may be changed in software if required.
+Pump defaults to CH1. The phone-charger and accessory roles intentionally start
+unassigned after a firmware upgrade, and an admin selects three unique physical
+channels from the station's **Relay & power** card after verifying the wiring.
+Assignments are stored per controller because stations may be wired
+differently. The same card can persistently enable/disable accessory power and
+run a bounded five-second test of any physical channel while the station is
+idle.
 
 ---
 
@@ -383,6 +389,11 @@ The LED controller/data signal is provided by the M5Stack control system.
 The LED strip ground and controller ground must share the common system ground so the data signal has the correct electrical reference.
 
 The LED power supply may also provide 5V power for entertainment accessories where appropriate.
+
+The intended accessory relay powers this converter, the outer display, and the
+speaker supply whenever the controller can communicate with the relay module.
+It may briefly turn off during boot, reboot, relay recovery, remapping, or a
+bounded raw-channel test because those operations begin from an all-off state.
 
 Decorative LEDs should normally operate at reduced brightness to limit power consumption.
 

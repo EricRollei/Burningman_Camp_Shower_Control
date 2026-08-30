@@ -75,9 +75,11 @@ momentary button on GPIO14. The Tough touchscreen is display-only; touching
 the idle, active, message, calibration, or summary screen never operates a
 relay or changes a session.
 
-1. At boot, all four relays are explicitly commanded OFF.
-2. An enabled, enrolled wristband opens a shower session with relay 1 off and
-   shows the member's name, burn total, and **PRESS BUTTON TO START WATER**.
+1. At boot, all four relays are explicitly commanded OFF. After settings load,
+   the configured accessory rail is restored if it is enabled.
+2. An enabled, enrolled wristband opens a shower session with the configured
+   pump relay off, turns on the configured phone-charger relay, and shows the
+   member's name, burn total, and **PRESS BUTTON TO START WATER**.
 3. The first physical button press starts the water. The screen shows live
    gallons, elapsed time, and **PRESS BUTTON WHEN DONE**.
 4. The second physical button press ends the shower and turns the pump off.
@@ -91,8 +93,9 @@ relay or changes a session.
    never end someone else's shower; they only show `NOT AUTHORIZED`.
 7. The shower also ends at its per-user gallon limit (10 gallons by default)
    or a 20-minute safety timeout.
-8. Every exit path commands all relays OFF and appends a completed record to
-   `/SESSIONS.CSV`; `/PULSES.CSV` remains the raw audit log.
+8. Every exit path commands the pump and phone-charger relays OFF and appends a
+   completed record to `/SESSIONS.CSV`; the accessory rail remains at its
+   configured state and `/PULSES.CSV` remains the raw audit log.
 9. Unknown and disabled wristbands are denied.
 
 The NanoC6 and external OLED form the public availability sign of each shower.
@@ -175,8 +178,9 @@ remembered in the browser. Cards grey out while a station is offline.
   cancel enrollment (the wristband must be tapped on the chosen station's
   reader, so the Enroll card has an **Enroll on** picker), flow calibration
   start/stop, music knob calibration, test tone, play, stop, volume, find
-  speaker, end session, and reboot. Audio commands on a fill station answer
-  "not supported".
+  speaker, relay assignment, accessory power, five-second relay tests, end
+  session, and reboot. Audio commands on a fill station answer "not
+  supported".
 - Remote commands are HMAC-signed with `CampNet::SECRET` and de-duplicated by
   nonce, so a stray or replayed packet is dropped. Over the air an admin can
   start flow calibration (which runs that station's pump, still bounded by
@@ -207,7 +211,9 @@ remembered in the browser. Cards grey out while a station is offline.
   in-flight guard, so a slow controller degrades to "retrying" instead of a
   frozen page. `/api/health` exposes uptime, heap, Wi-Fi client count, and
   hardware status; the same data is printed to serial every 30 seconds as
-  `[HEALTH]` lines. The **Controller** card includes a remote reboot button.
+  `[HEALTH]` lines. The **System health** card separates verified controller
+  communications from downstream loads that have no electrical feedback and
+  includes a remote reboot button.
 - If the Wi-Fi access point fails to start, it is retried every 30 seconds at
   runtime.
 - `/PULSETOT.CSV` snapshots per-tag totals at each session end so boot replays
@@ -217,10 +223,33 @@ The Shower speaker card provides a 0-100% volume control. Applying a new value
 changes the Bluetooth audio level immediately and saves it in `/SETTINGS.CSV`,
 so the same level is restored after a restart or speaker reconnection.
 
-Calibration starts relay 1 and counts raw pulses while water is dispensed into
-a known-volume container. Enter the measured gallons and stop calibration to
-save the new pulses-per-gallon ratio in `/SETTINGS.CSV`. A 10-minute safety
-timeout stops calibration without changing the saved ratio.
+Calibration starts the configured pump relay and counts raw pulses while water
+is dispensed into a known-volume container. Enter the measured gallons and
+stop calibration to save the new pulses-per-gallon ratio in `/SETTINGS.CSV`.
+A 10-minute safety timeout stops calibration without changing the saved ratio.
+
+### Relay and power configuration
+
+Every station has local mappings for the pump, phone charger, and accessory
+rail. Pump defaults to relay 1; charger and accessory default to **Not
+assigned**, so installing new firmware cannot energize an unknown auxiliary
+load. Assigned roles must use different channels. The mappings and the
+accessory enabled/disabled choice are saved in `/SETTINGS.CSV` and can be
+edited from that station's tab on any online admin page.
+
+The phone charger turns on as soon as an authorized wristband successfully
+opens a session, before the pump starts, and turns off on every session exit.
+The accessory rail supplies the LED power converter, speaker, and outer display
+and stays at its configured state through normal session transitions. Boot,
+reboot, relay recovery, remapping, and raw tests first command all four relays
+off, so the accessory rail may briefly power-cycle during those operations.
+
+The **Relay & power** card shows the last successfully commanded state of all
+four channels and offers a persistent accessory toggle. An idle station can
+also test any physical channel for five seconds; the firmware stops the test
+even if the browser disconnects and then restores the accessory policy. These
+states do not prove that relay contacts, converters, or loads are electrically
+working because the current hardware provides no load-feedback signal.
 
 The music-vibe calibration wizard captures ten physical knob positions in
 order: position 0 is quiet and positions 1-9 are music channels. During
@@ -288,7 +317,7 @@ id, role, SSID, channel, peer count and sync versions for confirmation.
 The configured USB port and verified upload speed come from the existing
 Tough RFID prototype. Serial commands are available as a backup to the button:
 
-- `off` — force all relays off
+- `off` — force pump and phone-charger relays off; preserve accessory policy
 - `end` — end the active shower
 - `status` — print current hardware and counter state
 

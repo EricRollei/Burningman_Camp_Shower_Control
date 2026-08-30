@@ -142,7 +142,13 @@ constexpr uint16_t MAX_LIMIT_MINUTES = 180;
 // A member's own allowance of 0 means "use the station's role limit".
 constexpr float DEFAULT_ALLOWANCE_GALLONS = 0.0F;
 constexpr float DEFAULT_PULSES_PER_GALLON = 450.0F;
-constexpr uint8_t PUMP_RELAY = 1;
+// Fresh/upgraded cards retain the existing pump wiring. Auxiliary outputs are
+// intentionally unmapped until an admin assigns physical relay channels.
+constexpr uint8_t DEFAULT_PUMP_RELAY = 1;
+constexpr uint8_t DEFAULT_CHARGER_RELAY = 0;
+constexpr uint8_t DEFAULT_ACCESSORY_RELAY = 0;
+constexpr bool DEFAULT_ACCESSORY_ENABLED = true;
+constexpr uint32_t RELAY_TEST_MS = 5000;
 constexpr uint32_t MAX_CALIBRATION_MS = 10UL * 60UL * 1000UL;
 
 // CampNet: ESP-NOW broadcast between all stations and door signs. Cadences are
