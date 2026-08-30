@@ -43,6 +43,7 @@ constexpr uint32_t MUSIC_KNOB_SETTLE_MS = 100;
 // First press starts the water; second press ends the shower.
 constexpr uint8_t PUMP_BUTTON_PIN = 14;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 40;
+constexpr uint32_t BUTTON_REBOOT_HOLD_MS = 5000;
 // How long the usage summary stays on screen after a shower ends.
 constexpr uint32_t SUMMARY_DISPLAY_MS = 10000;
 

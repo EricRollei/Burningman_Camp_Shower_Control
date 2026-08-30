@@ -94,6 +94,9 @@ operates a relay or changes a session.
 4. The next physical button press or a tap on red **STOP WATER** ends the
    shower and turns the pump off. Both controls are ignored when no member is
    authenticated or during calibration.
+   Holding the physical GPIO14 button for five seconds safely reboots the
+   Tough from any screen. If water is running, it stops as soon as the button
+   is pressed; an open session is logged with reason `REBOOT` before restart.
 5. After a shower ends the screen shows the gallons used and elapsed time for
    10 seconds (`SUMMARY_DISPLAY_MS`), then returns to the ready screen.
 6. If a different enrolled wristband is tapped while a session is open (someone
@@ -253,6 +256,10 @@ starts it in a particular state, `--local N` pretends to be another station).
   across tasks; concurrent access was the leading cause of hard freezes).
 - The main loop is subscribed to the ESP32 task watchdog: if it ever wedges
   for 20 seconds the station reboots itself instead of staying dead.
+- Holding the physical GPIO14 Start/Stop button for five seconds provides a
+  manual reboot path. A button held down through boot must be released and
+  pressed again before it can request another reboot, preventing a reboot
+  loop caused by a stuck button.
 - Bluetooth speaker discovery scans continuously for only the first two
   minutes, then retries one round every five minutes so inquiry scanning does
   not starve the Wi-Fi access point. The dashboard's **Find speaker** button

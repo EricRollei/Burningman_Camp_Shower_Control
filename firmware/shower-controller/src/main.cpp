@@ -53,6 +53,7 @@ uint32_t calibrationStartPulses = 0;
 uint32_t calibrationStartMs = 0;
 uint32_t lastBusProbeMs = 0;
 uint32_t buttonChangedMs = 0;
+uint32_t buttonPressedMs = 0;
 uint32_t lastMusicKnobReadMs = 0;
 uint32_t lastMusicKnobLogMs = 0;
 uint32_t lastMusicStartAttemptMs = 0;
@@ -81,6 +82,9 @@ uint32_t relayTestStartMs = 0;
 bool screenDirty = true;
 bool buttonRawPressed = false;
 bool buttonStablePressed = false;
+bool buttonPressArmed = false;
+bool buttonStoppedPump = false;
+char buttonPressUid[21] = {0};
 bool musicStartPending = false;
 bool musicKnobMoving = false;
 bool musicStaticStarted = false;
@@ -293,6 +297,15 @@ void endSession(const char* reason) {
   summaryReady = true;
 }
 
+void rebootController(const char* source) {
+  Serial.printf("[SYSTEM] reboot requested from %s\n", source);
+  if (sessionActive()) endSession("REBOOT");
+  shutdownAllRelays();
+  admin.handle();  // Give a pending HTTP response a chance to flush.
+  delay(250);
+  ESP.restart();
+}
+
 void startSession(const String& uid) {
   const char* name = members.nameFor(uid.c_str());
   if (name == nullptr || !members.enabledFor(uid.c_str())) {
@@ -497,17 +510,50 @@ void toggleShowerWater(const char* source, const char* endReason) {
 }
 
 void handlePumpButton() {
+  const uint32_t now = millis();
   const bool pressed = digitalRead(Config::PUMP_BUTTON_PIN) == LOW;
   if (pressed != buttonRawPressed) {
     buttonRawPressed = pressed;
-    buttonChangedMs = millis();
+    buttonChangedMs = now;
   }
-  if (millis() - buttonChangedMs < Config::BUTTON_DEBOUNCE_MS ||
-      pressed == buttonStablePressed) return;
+  if (now - buttonChangedMs < Config::BUTTON_DEBOUNCE_MS) return;
 
-  buttonStablePressed = pressed;
-  if (!pressed) return;
-  toggleShowerWater("BUTTON", "BUTTON");
+  if (pressed != buttonStablePressed) {
+    buttonStablePressed = pressed;
+    if (pressed) {
+      buttonPressedMs = now;
+      buttonPressArmed = true;
+      buttonStoppedPump = sessionActive() &&
+                          relays.isOn(settings.relayConfig().pump);
+      strlcpy(buttonPressUid, activeUid, sizeof(buttonPressUid));
+      // A possible long press must never leave water running while the user
+      // waits for the five-second reboot threshold.
+      if (buttonStoppedPump) {
+        stopPump();
+        screenDirty = true;
+      }
+      return;
+    }
+
+    if (!buttonPressArmed) return;
+    buttonPressArmed = false;
+    const bool sameSession = sessionActive() &&
+                             strcmp(buttonPressUid, activeUid) == 0;
+    if (!sameSession) return;
+    if (buttonStoppedPump) {
+      Serial.println("[BUTTON] finish shower");
+      endSession("BUTTON");
+    } else {
+      toggleShowerWater("BUTTON", "BUTTON");
+    }
+    return;
+  }
+
+  if (buttonStablePressed && buttonPressArmed &&
+      now - buttonPressedMs >= Config::BUTTON_REBOOT_HOLD_MS) {
+    buttonPressArmed = false;
+    rebootController("five-second physical button hold");
+  }
 }
 
 void handleTouchButton() {
@@ -707,12 +753,7 @@ void serviceReliability() {
   if (admin.takeEndSessionRequest() && sessionActive()) endSession("REMOTE");
   if (admin.takeSpeakerSearchRequest() && Config::HAS_MUSIC) speakerAudio.requestDiscovery();
   if (admin.takeRebootRequest()) {
-    Serial.println("[SYSTEM] reboot requested from admin page");
-    if (sessionActive()) endSession("REBOOT");
-    shutdownAllRelays();
-    admin.handle();  // let the HTTP response flush before restarting
-    delay(250);
-    ESP.restart();
+    rebootController("admin page");
   }
 
   static uint32_t lastHealthLogMs = 0;

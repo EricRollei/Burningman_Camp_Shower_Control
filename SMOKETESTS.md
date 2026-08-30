@@ -80,6 +80,13 @@ One pass through this list before the burn. Check items off as they pass.
       start with one control and stop with the other. Confirm touches outside
       the on-screen button, presses without an authorized session, and all
       touches during calibration do nothing.
+- [ ] **Physical-button reboot hold:** with the station idle, hold GPIO14 for
+      less than 5 s and release; confirm it does not reboot. Hold it for 5 s
+      and confirm the Tough reboots with all relays off. Repeat during an
+      active session with water flowing: water must stop immediately on button
+      down, the session must be logged as `REBOOT`, and the controller must
+      restart at 5 s. Keep the button held through boot and confirm it does not
+      enter a reboot loop; release it before testing another hold.
 - [ ] **Camper display names:** scan a normally named member and confirm the
       Tough shows first name plus last initial (for example `MICHAEL P.`),
       while the admin page retains the full name. Scan a numeric Mad T member
