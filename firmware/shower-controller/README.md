@@ -51,10 +51,10 @@ What travels over the link (`firmware/shared/CampNetProtocol.h`):
 Every Tough keeps the latest `USAGE` snapshot from each other station in
 `/NETUSAGE.CSV` (written at most every 15 s). A wristband's camp-wide total is
 this station's own sessions plus those snapshots, so the summary screen after
-a shower or a fill shows **this session**, **total this burn**, and the split
-between showers, water fill and RV fill. Snapshots are idempotent, so a lost
-packet is healed by the next one and a rebooted station has full totals again
-within about 10 s of hearing its peers.
+a shower or a fill shows **this session** and **total this burn**. The admin
+dashboard retains the per-role split between showers, water fill and RV fill.
+Snapshots are idempotent, so a lost packet is healed by the next one and a
+rebooted station has full totals again within about 10 s of hearing its peers.
 
 Members and limits use version-numbered last-writer-wins: a local edit bumps
 the version past anything heard on the air and broadcasts; a newer version
@@ -63,33 +63,28 @@ the same version (for example two fresh SD cards each with their own
 enrollments) are merged by union so no wristband disappears. Versions live in
 `/MEMBERS.VER` and `SETTINGS.CSV` (`limits_version`).
 
-The header of every screen shows `READY · n NET`, where `n` is the number of
+The header of every screen shows `READY - n NET`, where `n` is the number of
 other stations heard in the last 15 s. The admin page's Station card lists
 each peer with its last-seen time, and `/api/status` exposes `peers`, `net`
 counters, `limits`, `membersVersion` and `features`.
 
 ## Session behavior
 
-The person showering interacts with the RFID reader and the single momentary
-button on GPIO14. The Tough touchscreen offers a backup start/stop control on
-the in-progress screen: a large green **START** circle once a wristband is
-accepted, which becomes a large red **STOP** circle after the water starts.
-A touch inside the circle does exactly what a button press does.
+The person showering or filling interacts with the RFID reader and the single
+momentary button on GPIO14. The Tough touchscreen is display-only; touching
+the idle, active, message, calibration, or summary screen never operates a
+relay or changes a session.
 
 1. At boot, all four relays are explicitly commanded OFF. After settings load,
    the configured accessory rail is restored if it is enabled.
 2. An enabled, enrolled wristband opens a shower session with the configured
    pump relay off, turns on the configured phone-charger relay, and shows the
-   green **START** circle.
-3. The first button press (or a tap on **START**) starts the water. The circle
-   turns red and reads **STOP**; the screen shows live gallons against the
-   member's limit.
-4. The second button press (or a tap on **STOP**) ends the shower and turns the
-   pump off. Sessions ended from the screen are logged with reason `TOUCH`
-   instead of `BUTTON`. Button presses and touches are ignored when no member
-   is authenticated or during calibration; repeat touches within
-   `TOUCH_DEBOUNCE_MS` (750 ms) are ignored so a bounce cannot start and
-   immediately stop the water.
+   member's name, burn total, and **PRESS BUTTON TO START WATER**.
+3. The first physical button press starts the water. The screen shows live
+   gallons, elapsed time, and **PRESS BUTTON WHEN DONE**.
+4. The second physical button press ends the shower and turns the pump off.
+   Button presses are ignored when no member is authenticated or during
+   calibration.
 5. After a shower ends the screen shows the gallons used and elapsed time for
    10 seconds (`SUMMARY_DISPLAY_MS`), then returns to the ready screen.
 6. If a different enrolled wristband is tapped while a session is open (someone
@@ -118,7 +113,10 @@ are shower 10 gal / 20 min, water fill 10 gal / 60 min, RV fill 100 gal /
 allowance (`allowance_gallons` in `/MEMBERS.CSV`) is a shower-only override;
 `0` means "use the station limit", and fills always use the station limit.
 The Tough's built-in display shows the operational UI to the person using the
-controller; its touch layer only serves the backup START/STOP circle.
+controller. Its Big Top theme uses a static red-and-cream sunburst, gold frame
+and marquee bulbs, an embedded circus headline font, and a ticket-style
+summary. The screen deliberately omits allowance bars and limit text, but the
+configured gallon and time limits remain fully enforced.
 
 Both downstream I2C devices are discovered by address at boot, so their
 PaHUB ports may be rearranged without rebuilding the firmware. Missing devices
@@ -294,6 +292,16 @@ uptime_ms,uid,delta_pulses,tag_total_pulses,event
 added later once the RTC policy is decided.
 
 ## Build and upload
+
+For routine flashing, the repository's terminal uploader provides labeled
+profiles, USB-port selection, confirmation, and upload progress:
+
+```sh
+python3 firmware/uploader/firmware_uploader.py
+```
+
+See [`firmware/uploader/README.md`](../uploader/README.md) for the full workflow.
+The direct PlatformIO commands remain available for development:
 
 ```sh
 cd firmware/shower-controller
