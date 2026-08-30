@@ -180,7 +180,11 @@ constexpr uint8_t NET_COMMAND_ATTEMPTS = 6;
 constexpr uint32_t NET_COMMAND_RESULT_TTL_MS = 30000;
 constexpr uint32_t NET_COMMAND_REPLAY_WINDOW_MS = 60000;
 constexpr uint32_t NET_ACK_REPEAT_MS = 250;
-constexpr uint32_t NET_PEER_TIMEOUT_MS = 15000;
+// Bluetooth inquiry can occupy the shared radio for about 13 seconds. Allow
+// missed status packets across a complete inquiry without making a healthy
+// controller flicker offline in the admin dashboard. Door signs retain their
+// independent, shorter fail-safe timeout.
+constexpr uint32_t NET_PEER_TIMEOUT_MS = 45000;
 constexpr uint32_t NET_STAGING_TIMEOUT_MS = 5000;
 constexpr uint32_t NET_LEDGER_SAVE_DEBOUNCE_MS = 15000;
 constexpr uint32_t NET_BOOT_ANNOUNCE_DELAY_MS = 2000;

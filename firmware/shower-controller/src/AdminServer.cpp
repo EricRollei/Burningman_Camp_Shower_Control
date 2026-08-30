@@ -133,7 +133,7 @@ const a=document.activeElement,id=a&&a.id,ss=a&&a.selectionStart;$('#body').inne
 if(id){const e=document.getElementById(id);if(e){e.focus();try{if(ss!=null)e.setSelectionRange(ss,ss)}catch(_){}}}}
 function route(){const h=location.hash.slice(1).split('/');st.view=['members','water','camp','station'].includes(h[0])?h[0]:'home';st.sid=st.view=='station'?+h[1]||0:0;st.cf=null;st.R=null;window.scrollTo(0,0);render(true)}
 const go=(v,id)=>{location.hash=v+(id?'/'+id:'')};
-async function refresh(force){if(force)forceNext=true;if(busy)return;busy=true;const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),5000);try{const r=await fetch('/api/overview',{signal:ctl.signal});if(!r.ok)throw 0;O=await r.json();S=O.stations;lastOk=Date.now();if(st.edit&&!O.members.some(x=>x.uid===st.edit))st.edit=null}catch(e){}finally{clearTimeout(tm);busy=false;const f=forceNext;forceNext=false;render(f)}}
+async function refresh(force){if(force)forceNext=true;if(busy)return;busy=true;const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),5000),mv=O&&O.status?O.status.membersVersion:-1;try{const r=await fetch('/api/overview?membersVersion='+mv,{signal:ctl.signal});if(!r.ok)throw 0;const n=await r.json();if(n.members===null){if(!O||!Array.isArray(O.members))throw 0;n.members=O.members}O=n;S=O.stations;lastOk=Date.now();if(st.edit&&!O.members.some(x=>x.uid===st.edit))st.edit=null}catch(e){}finally{clearTimeout(tm);busy=false;const f=forceNext;forceNext=false;render(f)}}
 const ACT={go:(v,el)=>go(v,el.dataset.i),enroll:()=>{go('members');setTimeout(()=>{const e=$('#name');e&&e.focus()},50)},
 arm:async()=>{const n=st.name.trim();if(!n)return toast('Enter a member name first',true);document.activeElement&&document.activeElement.blur();if(await cmd('enroll',{name:n},+(st.at||O.status.stationId))){st.name='';render(true)}},
 cancel:v=>cmd('cancel',{},+v),
@@ -491,21 +491,31 @@ void AdminServer::sendOverview() {
   server_.sendContent(",\"health\":");
   server_.sendContent(healthJson());
   server_.sendContent(",\"members\":");
-  server_.sendContent("[");
-  String memberChunk;
-  memberChunk.reserve(2048);
-  for (size_t i = 0; i < registry_.count(); ++i) {
-    String member = memberJson(i);
-    if (memberChunk.length() + member.length() + 1 > 1800 &&
-        !memberChunk.isEmpty()) {
-      server_.sendContent(memberChunk);
-      memberChunk = "";
+  // Member data is the largest part of the response and changes rarely. The
+  // browser returns the version it already has; send JSON null when that cache
+  // is current so the two-second status poll does not rebuild and transmit the
+  // full camp roster every time.
+  const bool membersCurrent = server_.hasArg("membersVersion") &&
+                              server_.arg("membersVersion") == String(registry_.version());
+  if (membersCurrent) {
+    server_.sendContent("null");
+  } else {
+    server_.sendContent("[");
+    String memberChunk;
+    memberChunk.reserve(1024);
+    for (size_t i = 0; i < registry_.count(); ++i) {
+      String member = memberJson(i);
+      if (memberChunk.length() + member.length() + 1 > 900 &&
+          !memberChunk.isEmpty()) {
+        server_.sendContent(memberChunk);
+        memberChunk = "";
+      }
+      if (i) memberChunk += ',';
+      memberChunk += member;
     }
-    if (i) memberChunk += ',';
-    memberChunk += member;
+    if (!memberChunk.isEmpty()) server_.sendContent(memberChunk);
+    server_.sendContent("]");
   }
-  if (!memberChunk.isEmpty()) server_.sendContent(memberChunk);
-  server_.sendContent("]");
   server_.sendContent(",\"sessions\":");
   server_.sendContent(sessionsJson());
   server_.sendContent(",\"stations\":");

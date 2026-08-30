@@ -256,7 +256,10 @@ starts it in a particular state, `--local N` pretends to be another station).
 - The dashboard polls a single, chunk-streamed `/api/overview` endpoint with a
   timeout and an in-flight guard, so the controller does not retain duplicate
   camp-wide JSON buffers and a slow controller degrades to "retrying" instead
-  of a frozen page. `/api/health` exposes uptime, heap, Wi-Fi client count, and
+  of a frozen page. The browser supplies its member-registry version on each
+  poll, and the controller omits the roster when that cached copy is current;
+  member edits still refresh the roster on the next poll. `/api/health` exposes
+  uptime, heap, Wi-Fi client count, and
   hardware status; the same data is printed to serial every 30 seconds as
   `[HEALTH]` lines. Each station page's **Controller health** card shows
   verified controller communications as OK/DOWN pills, lists downstream
