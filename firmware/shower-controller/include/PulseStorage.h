@@ -31,7 +31,7 @@ class PulseStorage {
   void writeSnapshot();
   void replayLog(uint64_t fromOffset);
 
-  TagTotal totals_[MAX_TAGS];
+  TagTotal* totals_ = nullptr;  // PSRAM, MAX_TAGS
   size_t tagCount_ = 0;
   bool healthy_ = false;
   uint64_t cardSizeMB_ = 0;

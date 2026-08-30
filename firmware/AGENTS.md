@@ -72,8 +72,17 @@ Treat pump and relay behavior as safety-critical.
 - The door display must fail to `OFFLINE` after loss of valid controller status;
   its local button must not override the Tough's occupancy state. It must only
   act on `STATUS` packets whose `stationId` equals its `DOOR_STATION_ID`.
-- Nothing received over CampNet may energize a relay or open a session. The
-  link only updates the usage ledger, the member registry, and role limits.
+- Unauthenticated CampNet traffic (STATUS/USAGE/MEMBERS/LIMITS/TELEMETRY/
+  RECENT) only updates data: ledger, registry, limits, telemetry tables. Only
+  HMAC-signed COMMAND packets may act, and the only relay-adjacent actions are
+  the same ones the local admin page has (calibration start/stop, end
+  session, reboot). A remote command must never open a session or turn the
+  pump on for one. Keep `CampNet::SECRET` and the Wi-Fi password private.
+- Keep large CPU-only tables out of static/BSS memory: internal DRAM on the
+  Tough is within a few tens of KB of exhaustion with Bluetooth + Wi-Fi up.
+  Allocate them with `psramArray<>()` (`include/PsramAlloc.h`) in `begin()`,
+  and keep `[HEALTH] min_heap` above ~30 KB on a shower build with the speaker
+  connected and the admin page open.
 - Role limits are bounded (`MIN/MAX_LIMIT_GALLONS`, `MIN/MAX_LIMIT_MINUTES` in
   `Config.h`); reject out-of-range values on both the admin and network paths
   so a bad packet cannot lengthen the safety timeout.

@@ -10,54 +10,135 @@ namespace {
 const char ADMIN_PAGE[] PROGMEM = R"HTML(
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Camp Water Admin</title><style>
-:root{color-scheme:dark;--bg:#071817;--card:#102b28;--card2:#153632;--ink:#fff9ea;--muted:#a8c2bc;--a:#53e0a6;--warn:#ffc85b;--danger:#ff756c}
+:root{color-scheme:dark;--bg:#071817;--card:#102b28;--ink:#fff9ea;--muted:#a8c2bc;--a:#53e0a6;--warn:#ffc85b;--danger:#ff756c}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#16423b 0,var(--bg) 38%);color:var(--ink);font:16px system-ui,sans-serif}main{max-width:900px;margin:auto;padding:24px}
 .eyebrow{color:var(--a);font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.13em}h1{font-size:clamp(34px,8vw,58px);line-height:1;margin:.15em 0}.lede,p,small{color:var(--muted)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.card{background:linear-gradient(145deg,var(--card2),var(--card));border:1px solid #245047;border-radius:20px;padding:20px;margin:16px 0;box-shadow:0 14px 40px #0005}
-.stat{font-size:32px;font-weight:800;color:var(--a)}label{display:block;font-weight:700;margin:12px 0 6px}input{width:100%;font:inherit;padding:12px;border:1px solid #52766f;border-radius:10px;background:#071b19;color:var(--ink)}
-button{font:inherit;font-weight:800;border:0;border-radius:11px;padding:12px 15px;background:var(--a);color:#052019;cursor:pointer}button.secondary{background:#31524c;color:var(--ink)}button.danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}button:disabled{opacity:.45}
-.actions{display:flex;gap:9px;margin-top:12px;flex-wrap:wrap}.status{padding:13px;border-left:4px solid var(--a);background:#0d2522;border-radius:7px}.member{padding:15px 0;border-top:1px solid #31534d}.member:first-child{border-top:0}.member-head{display:flex;justify-content:space-between;gap:10px}.uid{font:12px ui-monospace,monospace;color:var(--muted)}.usage{color:var(--a);font-weight:700}.disabled{color:var(--warn)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.card{background:var(--card);border:1px solid #245047;border-radius:20px;padding:20px;margin:16px 0}
+.stat{font-size:32px;font-weight:800;color:var(--a)}label{display:block;font-weight:700;margin:12px 0 6px}input,select{width:100%;font:inherit;padding:12px;border:1px solid #52766f;border-radius:10px;background:#071b19;color:var(--ink)}
+button{font:inherit;font-weight:800;border:0;border-radius:11px;padding:12px 15px;background:var(--a);color:#052019;cursor:pointer}.secondary,.tab{background:#31524c;color:var(--ink)}.danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}button:disabled{opacity:.45}
+.actions{display:flex;gap:9px;margin-top:12px;flex-wrap:wrap}.status{padding:13px;border-left:4px solid var(--a);background:#0d2522;border-radius:7px}.member{padding:15px 0;border-top:1px solid #31534d}.member:first-child{border-top:0}.head{display:flex;justify-content:space-between;gap:10px}.uid{font:12px ui-monospace,monospace;color:var(--muted)}.usage{color:var(--a);font-weight:700}.disabled{color:var(--warn)}
 table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;padding:9px 5px;border-bottom:1px solid #31534d}th{color:var(--muted)}
-</style></head><body><main><div class="eyebrow">Local controller · secured</div><h1 id="title">Station Admin</h1><p class="lede">Members, camp-wide water usage, limits, and station calibration.</p>
-<div id="status" class="status">Connecting…</div><div class="grid"><section class="card"><div class="eyebrow" id="stationInfo">Station</div><div class="stat"><span id="total">0.00</span> gal</div><small>Completed usage at this station · <span id="cal">—</span> pulses/gal</small><p id="peers" style="margin:10px 0 0">Network: —</p></section>
-<section class="card"><div class="eyebrow">Enroll wristband</div><label for="name">Member name</label><input id="name" maxlength="32" placeholder="e.g. Dusty River"><div class="actions"><button id="arm">Enroll next tag</button><button id="cancel" class="secondary">Cancel</button></div></section></div>
-<section class="card"><h2>Members</h2><small>Usage is camp-wide (all stations). Enroll or edit here and every station updates within seconds.</small><div id="members"><small>Loading…</small></div></section>
-<section class="card"><h2>Station limits</h2><p>Per-session limits for each kind of station. Saved values sync to all four controllers.</p><div style="overflow:auto"><table><thead><tr><th>Kind</th><th>Gallons</th><th>Minutes</th></tr></thead><tbody>
-<tr><td>Shower</td><td><input id="limShowerGal" type="number" min="0.5" max="500" step="0.5"></td><td><input id="limShowerMin" type="number" min="1" max="180" step="1"></td></tr>
-<tr><td>Water fill</td><td><input id="limWaterGal" type="number" min="0.5" max="500" step="0.5"></td><td><input id="limWaterMin" type="number" min="1" max="180" step="1"></td></tr>
-<tr><td>RV fill</td><td><input id="limRvGal" type="number" min="0.5" max="500" step="0.5"></td><td><input id="limRvMin" type="number" min="1" max="180" step="1"></td></tr>
-</tbody></table></div><div class="actions"><button id="saveLimits">Save limits</button></div><small id="limitsInfo"></small></section>
-<div class="grid"><section class="card"><h2>Flow calibration</h2><p>Place the shower head in a known-volume container, start dispensing, then stop at the measured volume.</p><label for="known">Known volume (gallons)</label><input id="known" type="number" min="0.01" max="100" step="0.01" value="1"><div class="actions"><button id="calStart">Start dispensing</button><button id="calStop" class="secondary">Stop &amp; save</button></div><p id="calStatus"></p></section>
-<section class="card"><h2>Change password</h2><label for="password">New admin password</label><input id="password" type="password" minlength="8" maxlength="64"><div class="actions"><button id="changePassword">Update password</button></div><small>You will be prompted to sign in again.</small></section></div>
-<div id="musicCards"><section class="card"><h2>Shower speaker</h2><p id="audioStatus">Connecting…</p><label for="speakerVolume">Volume: <span id="speakerVolumeValue">—</span>%</label><input id="speakerVolume" type="range" min="0" max="100" step="1"><div class="actions"><button id="saveVolume">Set volume</button><button id="tone">Test tone</button><button id="play">Play channel 1</button><button id="stopAudio" class="secondary">Stop</button><button id="findSpeaker" class="secondary">Find speaker</button></div><label for="audioFile">Replace channel 1 (44.1 kHz stereo signed 16-bit PCM)</label><input id="audioFile" type="file"><div class="actions"><button id="uploadAudio" class="secondary">Upload audio</button></div><small>Volume is saved across restarts. The Tough automatically searches for and reconnects to a speaker whose Bluetooth name contains “Select 4 Go”.</small></section>
-<section class="card"><h2>Music vibe selector</h2><p id="knobStatus">Connecting…</p><div class="stat"><span id="knobRaw">—</span><small> / 4095 raw</small></div><p id="knobPoints"></p><div class="actions"><button id="knobCalStart">Start calibration</button><button id="knobCapture">Capture position 0</button><button id="knobCalCancel" class="secondary">Cancel</button></div><small>Ten physical positions: 0 is quiet; 1–9 are music channels. Move the knob to the requested notch and capture each one in order.</small></section></div>
-<section class="card"><h2>Recent sessions at this station</h2><div style="overflow:auto"><table><thead><tr><th>Member</th><th>Gallons</th><th>Duration</th><th>Ended</th></tr></thead><tbody id="sessions"></tbody></table></div></section>
-<section class="card"><h2>Controller</h2><p id="health">Connecting…</p><div class="actions"><button id="reboot" class="danger">Reboot controller</button></div><small>Reboot is safe: the pump is shut off first and usage logs live on the SD card.</small></section>
-</main><script>
-const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0 0}.tab.on{background:var(--a);color:#052019}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--danger);margin-right:7px}.dot.on{background:#0a5}.off .card{opacity:.45;pointer-events:none}#msg{min-height:1.4em}
+</style></head><body><main><div class="eyebrow">Camp network · secured</div><h1>Camp Water Admin</h1><p class="lede">One login, every station. Signed in at <span id="here">…</span></p>
+<div id="status" class="status">Connecting…</div><div class="grid"><section class="card"><div class="eyebrow">Camp-wide</div><div class="stat"><span id="total">0.00</span> gal</div><small>Completed usage across every station</small><p id="peers" style="margin:10px 0 0">Network: —</p></section>
+<section class="card"><div class="eyebrow">Enroll wristband</div><label for="name">Member name</label><input id="name" maxlength="32" placeholder="e.g. Dusty River"><label for="enrollAt">Enroll on (tap the wristband on that station's reader)</label><select id="enrollAt"></select><div class="actions"><button id="arm">Enroll next tag</button><button id="cancel" class="secondary">Cancel</button></div></section></div>
+<section class="card"><h2>Members</h2><small>Usage is camp-wide. Edits here reach every station within seconds.</small><div id="members"><small>Loading…</small></div></section>
+<section class="card"><h2>Station limits</h2><p>Per-session limits by station kind; synced to every controller.</p><div style="overflow:auto"><table><thead><tr><th>Kind</th><th>Gallons</th><th>Minutes</th></tr></thead><tbody id="limits"></tbody></table></div><div class="actions"><button id="saveLimits">Save limits</button></div><small id="limitsInfo"></small></section>
+<section class="card"><h2>Change password</h2><label for="password">New admin password</label><input id="password" type="password" minlength="8" maxlength="64"><div class="actions"><button id="changePassword">Update password</button></div><small>One password for every station — it syncs over the camp network. You will be asked to sign in again.</small></section>
+<div id="tabs" class="tabs"></div><p id="msg"></p><div id="st">
+<div class="grid"><section class="card"><h2 id="stName">Station</h2><p id="sess">—</p><div class="actions"><button id="endSession" class="danger">End session</button></div></section>
+<section class="card"><h2>Flow calibration</h2><p>Dispense into a known-volume container, then stop at the measured volume.</p><label for="known">Known volume (gallons)</label><input id="known" type="number" min="0.01" max="100" step="0.01" value="1"><div class="actions"><button id="calStart">Start dispensing</button><button id="calStop" class="secondary">Stop &amp; save</button></div><p id="calStatus"></p></section></div>
+<div id="musicCards" class="grid"><section class="card"><h2>Shower speaker</h2><p id="audioStatus">Connecting…</p><label for="speakerVolume">Volume: <span id="speakerVolumeValue">—</span>%</label><input id="speakerVolume" type="range" min="0" max="100" step="1"><div class="actions"><button id="saveVolume">Set volume</button><button id="tone">Test tone</button><button id="play">Play channel 1</button><button id="stopAudio" class="secondary">Stop</button><button id="findSpeaker" class="secondary">Find speaker</button></div><label for="audioFile" id="uploadLabel">Replace channel 1</label><input id="audioFile" type="file"><div class="actions"><button id="uploadAudio" class="secondary">Upload audio</button></div><small>The Tough reconnects to a speaker named “Select 4 Go”.</small></section>
+<section class="card"><h2>Music vibe selector</h2><p id="knobStatus">Connecting…</p><div class="stat"><span id="knobRaw">—</span><small> / 4095 raw</small></div><p id="knobPoints"></p><div class="actions"><button id="knobCalStart">Start calibration</button><button id="knobCapture">Capture position 0</button><button id="knobCalCancel" class="secondary">Cancel</button></div><small>Notch 0 is quiet; 1–9 are channels. Capture each notch in order.</small></section></div>
+<section class="card"><h2>Recent sessions</h2><div style="overflow:auto"><table><thead><tr><th>Member</th><th>Gallons</th><th>Duration</th><th>Ended</th></tr></thead><tbody id="sessions"></tbody></table></div></section>
+<section class="card"><h2>Controller</h2><p id="health">Connecting…</p><div class="actions"><button id="reboot" class="danger">Reboot controller</button></div><small>Reboot is safe: the pump is shut off first.</small></section>
+</div></main><script>
+const $=s=>document.querySelector(s),T=(i,v)=>$('#'+i).textContent=v,D=(i,v)=>$('#'+i).disabled=v,F=(v,d)=>Number(v).toFixed(d),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),DS=['OPEN','IN USE','UNAVAILABLE'];
+let S=[],sel=+localStorage.tab||0,busy=false;const nm=id=>(S.find(x=>x.id==id)||{}).name||'Station '+id,LIM=[['Shower','shower'],['Water fill','water'],['RV fill','rv']];
+$('#limits').innerHTML=LIM.map(([n,k])=>`<tr><td>${n}</td><td><input id="${k}Gal" type="number" min="0.5" max="500" step="0.5"></td><td><input id="${k}Min" type="number" min="1" max="180"></td></tr>`).join('');
 async function post(path,data={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});const j=await r.json();if(!r.ok)throw Error(j.message||'Request failed');return j}
-let busy=false;
-async function refresh(){if(busy)return;busy=true;const ctl=new AbortController();const tm=setTimeout(()=>ctl.abort(),5000);try{const r=await fetch('/api/overview',{signal:ctl.signal});const o=await r.json();const s=o.status,m={members:o.members},h={sessions:o.sessions},hl=o.health;$('#status').textContent=s.enrollmentPending?`Waiting for ${s.pendingName}'s wristband — tap it now.`:s.message;
-$('#title').textContent=`${s.station} Admin`;$('#stationInfo').textContent=`Station ${s.stationId} · ${s.roleName} · ${s.ssid}`;$('#peers').textContent=`Network: ${s.peers.length?s.peers.map(p=>`${p.name} (${p.online?'online':'last seen '+p.lastSeenS+'s ago'})`).join(' · '):'no other stations heard yet'} · rx ${s.net.rx} tx ${s.net.tx}${s.net.txFail?' fail '+s.net.txFail:''}`;$('#musicCards').style.display=s.features.music?'':'none';
-const L=s.limits,lim=[['limShowerGal',L.shower.gal],['limShowerMin',L.shower.min],['limWaterGal',L.water.gal],['limWaterMin',L.water.min],['limRvGal',L.rv.gal],['limRvMin',L.rv.min]];if(!lim.some(([id])=>document.activeElement===$('#'+id)))lim.forEach(([id,v])=>{$('#'+id).value=v});$('#limitsInfo').textContent=`Version ${L.version} · members version ${s.membersVersion}`;
-$('#health').textContent=`Uptime ${Math.floor(hl.uptimeMs/60000)} min · heap ${Math.round(hl.freeHeap/1024)}k free (low-water ${Math.round(hl.minFreeHeap/1024)}k) · WiFi clients ${hl.wifiClients} · hub ${hl.hub?'ok':'DOWN'} · relay ${hl.relay?'ok':'DOWN'} · RFID ${hl.rfid?'ok':'DOWN'} · SD ${hl.sd?'ok':'DOWN'} · audio underruns ${hl.audioUnderruns}`;$('#cal').textContent=Number(s.pulsesPerGallon).toFixed(2);$('#calStatus').textContent=`${s.calibrationMessage} · ${s.calibrationPulses} pulses`;$('#calStart').disabled=s.calibrationActive;$('#calStop').disabled=!s.calibrationActive;
-$('#audioStatus').textContent=`Speaker: ${s.speaker} · ${s.audioPlayback} · all channel tracks ${s.audioFile?'ready':'missing'}`;if(document.activeElement!==$('#speakerVolume')){$('#speakerVolume').value=s.speakerVolume;$('#speakerVolumeValue').textContent=s.speakerVolume}$('#tone').disabled=s.speaker!=='connected';$('#play').disabled=s.speaker!=='connected'||!s.audioFile;
-$('#knobRaw').textContent=s.musicKnobRaw;$('#knobStatus').textContent=s.musicCalibrationActive?s.musicCalibrationMessage:`Position ${s.musicChannel} · ${s.musicChannelName} · ${s.musicKnobCalibrated?'calibrated':'using test thresholds'}`;$('#knobPoints').textContent=s.musicPositions.map((x,i)=>`${i}: ${x===null?'—':x}`).join(' · ');$('#knobCalStart').disabled=s.musicCalibrationActive;$('#knobCapture').disabled=!s.musicCalibrationActive;$('#knobCapture').textContent=`Capture position ${s.musicCalibrationNext}`;$('#knobCalCancel').disabled=!s.musicCalibrationActive;
-let total=0;$('#members').innerHTML=m.members.length?m.members.map(x=>{total+=x.gallons;return `<div class="member"><div class="member-head"><div><strong>${esc(x.name)}</strong> ${x.enabled?'':'<span class="disabled">disabled</span>'}<div class="uid">${esc(x.uid)}</div></div><div class="usage">${Number(x.networkGallons).toFixed(2)} gal total<br><small>showers ${Number(x.showerGallons).toFixed(1)} · water ${Number(x.waterGallons).toFixed(1)} · RV ${Number(x.rvGallons).toFixed(1)} · here ${Number(x.gallons).toFixed(1)}</small></div></div><div class="actions"><button class="secondary" onclick="editMember('${x.uid}','${encodeURIComponent(x.name)}',${x.allowance},${x.enabled})">Edit · ${x.allowance>0?Number(x.allowance).toFixed(1)+' gal shower limit':'station limits'}</button><button class="danger" onclick="removeMember('${x.uid}')">Delete</button></div></div>`}).join(''):'<small>No members enrolled.</small>';$('#total').textContent=total.toFixed(2);
-$('#sessions').innerHTML=h.sessions.length?h.sessions.map(x=>`<tr><td>${esc(x.name)}</td><td>${Number(x.gallons).toFixed(2)}</td><td>${Math.round(x.durationMs/1000)}s</td><td>${esc(x.reason)}</td></tr>`).join(''):'<tr><td colspan="4">No completed showers</td></tr>';}catch(e){$('#status').textContent='Controller not responding — retrying…'}finally{clearTimeout(tm);busy=false}}
-$('#arm').onclick=async()=>{try{await post('/api/enroll',{name:$('#name').value.trim()});refresh()}catch(e){alert(e.message)}};$('#cancel').onclick=async()=>{await post('/api/cancel');refresh()};
-async function editMember(uid,name,allowance,enabled){name=decodeURIComponent(name);const nextName=prompt('Member name',name);if(!nextName)return;const nextAllowance=prompt('Custom shower limit in gallons (0 = use the station limit; fills always use station limits)',allowance);if(nextAllowance===null||nextAllowance==='')return;const nextEnabled=confirm('Allow this wristband to start showers?');try{await post('/api/member',{uid,name:nextName,allowance:nextAllowance,enabled:nextEnabled?'1':'0'});refresh()}catch(e){alert(e.message)}}
+async function cmd(action,extra={},station=sel){try{const j=await post('/api/command',{station,action,...extra});let m=j.message;if(j.pending){m='';for(let i=0;i<13&&!m;i++){await new Promise(x=>setTimeout(x,300));const q=await(await fetch('/api/command?nonce='+j.nonce)).json();if(q.state=='done')m=(q.ok?'':'Rejected: ')+(q.message||'');else if(q.state!='pending')break}m=m||'No answer from '+nm(station)}T('msg',nm(station)+': '+m);refresh()}catch(e){alert(e.message)}}
+function pick(id){sel=id;localStorage.tab=id;render()}
+async function refresh(){if(busy)return;busy=true;const ctl=new AbortController();const tm=setTimeout(()=>ctl.abort(),5000);try{const r=await fetch('/api/overview',{signal:ctl.signal});const o=await r.json();const s=o.status,m=o.members;S=o.stations;T('here',`${s.station} · ${s.ssid}`);
+T('peers',`Network: ${S.filter(x=>!x.local).map(p=>`${p.name} (${p.online?'online':'last seen '+p.lastSeenS+'s ago'})`).join(' · ')||'no other stations heard yet'} · rx ${s.net.rx} tx ${s.net.tx}${s.net.txFail?' fail '+s.net.txFail:''}`);
+const L=s.limits,lim=[];LIM.forEach(([n,k])=>lim.push([k+'Gal',L[k].gal],[k+'Min',L[k].min]));if(!lim.some(([id])=>document.activeElement===$('#'+id)))lim.forEach(([id,v])=>{$('#'+id).value=v});T('limitsInfo',`Version ${L.version} · members version ${s.membersVersion}`);
+const ea=$('#enrollAt'),ev=ea.value;ea.innerHTML=S.map(x=>`<option value="${x.id}">${esc(x.name)}${x.online?'':' (offline)'}</option>`).join('');ea.value=ev;if(!ea.value)ea.value=s.stationId;
+let total=0;$('#members').innerHTML=m.length?m.map(x=>{total+=x.networkGallons;return `<div class="member"><div class="head"><div><strong>${esc(x.name)}</strong> ${x.enabled?'':'<span class="disabled">disabled</span>'}<div class="uid">${esc(x.uid)}</div></div><div class="usage">${F(x.networkGallons,2)} gal total<br><small>showers ${F(x.showerGallons,1)} · water ${F(x.waterGallons,1)} · RV ${F(x.rvGallons,1)}</small></div></div><div class="actions"><button class="secondary" onclick="editMember('${x.uid}','${encodeURIComponent(x.name)}',${x.allowance},${x.enabled})">Edit · ${x.allowance>0?F(x.allowance,1)+' gal shower limit':'station limits'}</button><button class="danger" onclick="removeMember('${x.uid}')">Delete</button></div></div>`}).join(''):'<small>No members enrolled.</small>';T('total',total.toFixed(2));
+render()}catch(e){T('status','Controller not responding — retrying…')}finally{clearTimeout(tm);busy=false}}
+function render(){const c=S.find(x=>x.id==sel)||S.find(x=>x.local);if(!c)return;sel=c.id;const t=c.telemetry,se=t.session,h=t.health,on=t.speaker==='connected';
+$('#tabs').innerHTML=S.map(x=>`<button class="tab${x.id==sel?' on':''}" onclick="pick(${x.id})"><span class="dot${x.online?' on':''}"></span>${esc(x.name)} · ${x.online?DS[x.telemetry.session.doorState]||'?':'OFFLINE'}</button>`).join('');
+const w=S.find(x=>x.telemetry.enrollmentPending);T('status',w?`Waiting for ${w.telemetry.pendingName}'s wristband at ${w.name} — tap it now.`:`${c.name}: ${t.message}`);
+$('#st').classList.toggle('off',!c.online);T('stName',`${c.name} · ${c.roleName}${c.local?' · this station':''}${c.online?'':' · OFFLINE'}`);
+T('sess',se.active?`${se.name} · ${F(se.gallons,2)} of ${F(se.limit,1)} gal · pump ${se.pumpOn?'ON':'off'}`:`No active session · ${DS[se.doorState]||'?'}`);D('endSession',!se.active);
+T('calStatus',`${t.calibrationMessage} · ${t.calibrationPulses} pulses · ${F(t.pulsesPerGallon,2)} pulses/gal`);D('calStart',t.calibrationActive);D('calStop',!t.calibrationActive);$('#musicCards').style.display=t.features.music?'':'none';
+T('audioStatus',`Speaker: ${t.speaker} · ${t.audioPlayback} · channel tracks ${t.audioFile?'ready':'missing'}`);if(document.activeElement!==$('#speakerVolume')){$('#speakerVolume').value=t.speakerVolume;T('speakerVolumeValue',t.speakerVolume)}D('tone',!on);D('play',!on||!t.audioFile);
+D('uploadAudio',!c.local);D('audioFile',!c.local);T('uploadLabel',c.local?'Replace channel 1 (44.1 kHz stereo signed 16-bit PCM)':`Upload is local only — join ${c.name}'s Wi-Fi`);
+T('knobRaw',t.musicKnobRaw);T('knobStatus',t.musicCalibrationActive?`Calibrating · move the knob to notch ${t.musicCalibrationNext} and capture`:`Position ${t.musicChannel} · ${t.musicChannelName} · ${t.musicKnobCalibrated?'calibrated':'using test thresholds'}`);T('knobPoints',t.musicPositions.map((x,i)=>`${i}: ${x===null?'—':x}`).join(' · '));D('knobCalStart',t.musicCalibrationActive);D('knobCapture',!t.musicCalibrationActive);T('knobCapture',`Capture position ${t.musicCalibrationNext}`);D('knobCalCancel',!t.musicCalibrationActive);
+$('#sessions').innerHTML=c.recent.length?c.recent.map(x=>`<tr><td>${esc(x.name)}</td><td>${F(x.gallons,2)}</td><td>${x.durationS}s</td><td>${esc(x.reason)}</td></tr>`).join(''):'<tr><td colspan="4">No completed sessions</td></tr>';
+T('health',`Uptime ${Math.floor(h.uptimeS/60)} min · heap ${Math.round(h.freeHeap/1024)}k free (low ${Math.round(h.minFreeHeap/1024)}k) · WiFi clients ${h.wifiClients} · hub ${h.hub?'ok':'DOWN'} · relay ${h.relay?'ok':'DOWN'} · RFID ${h.rfid?'ok':'DOWN'} · SD ${h.sd?'ok':'DOWN'} · audio underruns ${h.audioUnderruns}`)}
+$('#arm').onclick=()=>cmd('enroll',{name:$('#name').value.trim()},+$('#enrollAt').value);$('#cancel').onclick=()=>cmd('cancel',{},+$('#enrollAt').value);
+async function editMember(uid,name,allowance,enabled){name=decodeURIComponent(name);const nextName=prompt('Member name',name);if(!nextName)return;const nextAllowance=prompt('Custom shower limit in gallons (0 = station limit)',allowance);if(nextAllowance===null||nextAllowance==='')return;const nextEnabled=confirm('Allow this wristband to start sessions?');try{await post('/api/member',{uid,name:nextName,allowance:nextAllowance,enabled:nextEnabled?'1':'0'});refresh()}catch(e){alert(e.message)}}
 async function removeMember(uid){if(!confirm('Delete this wristband registration? Historical usage remains.'))return;await post('/api/delete',{uid});refresh()}
-$('#calStart').onclick=async()=>{try{await post('/api/calibration/start');refresh()}catch(e){alert(e.message)}};$('#calStop').onclick=async()=>{try{await post('/api/calibration/stop',{gallons:$('#known').value});refresh()}catch(e){alert(e.message)}};
-$('#changePassword').onclick=async()=>{try{await post('/api/password',{password:$('#password').value});alert('Password changed. Sign in again with the new password.');location.reload()}catch(e){alert(e.message)}};
-$('#speakerVolume').oninput=()=>{$('#speakerVolumeValue').textContent=$('#speakerVolume').value};$('#saveVolume').onclick=async()=>{try{await post('/api/audio/volume',{volume:$('#speakerVolume').value});refresh()}catch(e){alert(e.message)}};$('#tone').onclick=async()=>{try{await post('/api/audio/tone');refresh()}catch(e){alert(e.message)}};$('#play').onclick=async()=>{try{await post('/api/audio/play');refresh()}catch(e){alert(e.message)}};$('#stopAudio').onclick=async()=>{await post('/api/audio/stop');refresh()};$('#uploadAudio').onclick=async()=>{const f=$('#audioFile').files[0];if(!f)return alert('Choose a PCM file first');const body=new FormData();body.append('audio',f);$('#audioStatus').textContent=`Uploading ${f.name}…`;const r=await fetch('/api/audio/upload',{method:'POST',body});const j=await r.json();if(!r.ok)return alert(j.message||'Upload failed');refresh()};
-$('#knobCalStart').onclick=async()=>{try{await post('/api/music/calibration/start');refresh()}catch(e){alert(e.message)}};$('#knobCapture').onclick=async()=>{try{await post('/api/music/calibration/capture');refresh()}catch(e){alert(e.message)}};$('#knobCalCancel').onclick=async()=>{await post('/api/music/calibration/cancel');refresh()};
-$('#saveLimits').onclick=async()=>{try{await post('/api/limits',{showerGal:$('#limShowerGal').value,showerMin:$('#limShowerMin').value,waterGal:$('#limWaterGal').value,waterMin:$('#limWaterMin').value,rvGal:$('#limRvGal').value,rvMin:$('#limRvMin').value});refresh()}catch(e){alert(e.message)}};
-$('#findSpeaker').onclick=async()=>{try{await post('/api/speaker/search');refresh()}catch(e){alert(e.message)}};
-$('#reboot').onclick=async()=>{if(!confirm('Reboot the shower controller?'))return;try{await post('/api/reboot')}catch(e){}$('#status').textContent='Rebooting — the page will reconnect in about 20 seconds.'};
+for(const[i,a]of[['calStart','calStart'],['tone','tone'],['play','play'],['stopAudio','stop'],['findSpeaker','findSpeaker'],['knobCalStart','musicCalStart'],['knobCapture','musicCalCapture'],['knobCalCancel','musicCalCancel']])$('#'+i).onclick=()=>cmd(a);
+$('#calStop').onclick=()=>cmd('calStop',{gallons:$('#known').value});
+$('#changePassword').onclick=async()=>{try{await post('/api/password',{password:$('#password').value});alert('Password changed on every station. Sign in again.');location.reload()}catch(e){alert(e.message)}};
+$('#speakerVolume').oninput=()=>T('speakerVolumeValue',$('#speakerVolume').value);$('#saveVolume').onclick=()=>cmd('volume',{volume:$('#speakerVolume').value});
+$('#uploadAudio').onclick=async()=>{const f=$('#audioFile').files[0];if(!f)return alert('Choose a PCM file first');const body=new FormData();body.append('audio',f);T('audioStatus',`Uploading ${f.name}…`);const r=await fetch('/api/audio/upload',{method:'POST',body});const j=await r.json();if(!r.ok)return alert(j.message||'Upload failed');refresh()};
+$('#saveLimits').onclick=async()=>{const d={};LIM.forEach(([n,k])=>['Gal','Min'].forEach(u=>d[k+u]=$('#'+k+u).value));try{await post('/api/limits',d);refresh()}catch(e){alert(e.message)}};
+$('#endSession').onclick=()=>{if(confirm(`End the active session at ${nm(sel)}?`))cmd('endSession')};$('#reboot').onclick=()=>{if(confirm(`Reboot ${nm(sel)}?`))cmd('reboot')};
 refresh();setInterval(refresh,2000);
 </script></body></html>)HTML";
+
+constexpr uint32_t TELEMETRY_REBUILD_MS = 250;
+// Give the ACK a chance to leave the radio before a remotely requested reboot.
+constexpr uint32_t REMOTE_REBOOT_DELAY_MS = 500;
+constexpr uint8_t COMMAND_DRAIN_PER_LOOP = 4;
+
+struct ActionName {
+  const char* name;
+  uint8_t action;
+};
+const ActionName ACTION_NAMES[] = {
+    {"enroll", CampNet::CMD_ENROLL},
+    {"cancel", CampNet::CMD_CANCEL_ENROLL},
+    {"calStart", CampNet::CMD_CALIBRATION_START},
+    {"calStop", CampNet::CMD_CALIBRATION_STOP},
+    {"musicCalStart", CampNet::CMD_MUSIC_CAL_START},
+    {"musicCalCapture", CampNet::CMD_MUSIC_CAL_CAPTURE},
+    {"musicCalCancel", CampNet::CMD_MUSIC_CAL_CANCEL},
+    {"tone", CampNet::CMD_AUDIO_TONE},
+    {"play", CampNet::CMD_AUDIO_PLAY},
+    {"stop", CampNet::CMD_AUDIO_STOP},
+    {"volume", CampNet::CMD_AUDIO_VOLUME},
+    {"findSpeaker", CampNet::CMD_SPEAKER_SEARCH},
+    {"reboot", CampNet::CMD_REBOOT},
+    {"endSession", CampNet::CMD_END_SESSION},
+};
+
+uint8_t actionFromName(const String& name) {
+  for (const ActionName& entry : ACTION_NAMES) {
+    if (name == entry.name) return entry.action;
+  }
+  return 0;
 }
+
+// Actions that need the speaker / music knob, absent on fill stations.
+bool needsMusic(uint8_t action) {
+  switch (action) {
+    case CampNet::CMD_MUSIC_CAL_START:
+    case CampNet::CMD_MUSIC_CAL_CAPTURE:
+    case CampNet::CMD_MUSIC_CAL_CANCEL:
+    case CampNet::CMD_AUDIO_TONE:
+    case CampNet::CMD_AUDIO_PLAY:
+    case CampNet::CMD_AUDIO_STOP:
+    case CampNet::CMD_AUDIO_VOLUME:
+    case CampNet::CMD_SPEAKER_SEARCH:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool parseVolume(const String& value, long& percent) {
+  if (value.isEmpty() || value.length() > 3) return false;
+  for (size_t i = 0; i < value.length(); ++i) {
+    if (!isDigit(value[i])) return false;
+  }
+  percent = value.toInt();
+  return percent >= 0 && percent <= 100;
+}
+
+// Bounded copy of a packet char array that may lack a terminator.
+template <size_t N>
+String field(const char (&text)[N]) {
+  String out;
+  out.reserve(N);
+  for (size_t i = 0; i < N && text[i] != '\0'; ++i) out += text[i];
+  return out;
+}
+
+const char* boolJson(bool value) { return value ? "true" : "false"; }
+}  // namespace
 
 AdminServer::AdminServer(MemberRegistry& registry, const PulseStorage& pulseStorage,
                          const SessionStorage& sessions, SettingsStore& settings,
@@ -83,7 +164,14 @@ bool AdminServer::begin() {
   return true;
 }
 
-void AdminServer::handle() { if (started_) server_.handleClient(); }
+void AdminServer::handle() {
+  if (started_) server_.handleClient();
+  drainRemoteCommands();
+  if (millis() - lastTelemetryMs_ >= TELEMETRY_REBUILD_MS) {
+    lastTelemetryMs_ = millis();
+    publishTelemetry();
+  }
+}
 
 bool AdminServer::onTagScanned(const String& uid) {
   lastUid_ = uid;
@@ -152,15 +240,30 @@ void AdminServer::reportHardware(bool hubReady, bool relayReady, bool rfidReady)
   rfidReady_ = rfidReady;
 }
 
+void AdminServer::reportSession(const char* activeName, float sessionGallons,
+                                float sessionLimit, bool pumpOn, uint8_t doorState) {
+  strlcpy(activeName_, activeName ? activeName : "", sizeof(activeName_));
+  sessionGallons_ = sessionGallons;
+  sessionLimit_ = sessionLimit;
+  pumpOn_ = pumpOn;
+  doorState_ = doorState;
+}
+
 bool AdminServer::takeRebootRequest() {
-  const bool requested = rebootRequested_;
+  if (!rebootRequested_ || static_cast<int32_t>(millis() - rebootReadyMs_) < 0) return false;
   rebootRequested_ = false;
-  return requested;
+  return true;
 }
 
 bool AdminServer::takeSpeakerSearchRequest() {
   const bool requested = speakerSearchRequested_;
   speakerSearchRequested_ = false;
+  return requested;
+}
+
+bool AdminServer::takeEndSessionRequest() {
+  const bool requested = endSessionRequested_;
+  endSessionRequested_ = false;
   return requested;
 }
 
@@ -191,12 +294,14 @@ void AdminServer::configureRoutes() {
   server_.on("/api/members", HTTP_GET, [this]() { if (authorize()) server_.send(200, "application/json", "{\"members\":" + membersJson() + "}"); });
   server_.on("/api/sessions", HTTP_GET, [this]() { if (authorize()) server_.send(200, "application/json", "{\"sessions\":" + sessionsJson() + "}"); });
   server_.on("/api/health", HTTP_GET, [this]() { if (authorize()) server_.send(200, "application/json", healthJson()); });
+  server_.on("/api/stations", HTTP_GET, [this]() { if (authorize()) server_.send(200, "application/json", stationsJson()); });
   server_.on("/api/overview", HTTP_GET, [this]() {
     if (!authorize()) return;
-    // One request per poll instead of three keeps the single-threaded
+    // One request per poll instead of several keeps the single-threaded
     // WebServer responsive and the admin page resilient.
+    const String stations = stationsJson();
     String body;
-    body.reserve(2048 + registry_.count() * 192 + sessions_.recentCount() * 128);
+    body.reserve(2048 + registry_.count() * 192 + sessions_.recentCount() * 128 + stations.length());
     body += "{\"status\":";
     body += statusJson();
     body += ",\"health\":";
@@ -205,51 +310,41 @@ void AdminServer::configureRoutes() {
     body += membersJson();
     body += ",\"sessions\":";
     body += sessionsJson();
+    body += ",\"stations\":";
+    body += stations;
     body += '}';
     server_.send(200, "application/json", body);
   });
-  server_.on("/api/reboot", HTTP_POST, [this]() {
-    if (!authorize()) return;
-    rebootRequested_ = true;
-    sendJsonMessage(200, true, "Rebooting");
-  });
-  server_.on("/api/speaker/search", HTTP_POST, [this]() {
-    if (!authorize()) return;
-    speakerSearchRequested_ = true;
-    sendJsonMessage(200, true, "Searching for speaker");
-  });
-  server_.on("/api/enroll", HTTP_POST, [this]() { if (authorize()) armEnrollment(); });
-  server_.on("/api/cancel", HTTP_POST, [this]() { if (authorize()) cancelEnrollment(); });
+  server_.on("/api/command", HTTP_POST, [this]() { if (authorize()) handleCommandPost(); });
+  server_.on("/api/command", HTTP_GET, [this]() { if (authorize()) handleCommandPoll(); });
+  // Legacy per-action routes share the command implementations.
+  server_.on("/api/reboot", HTTP_POST, [this]() { if (authorize()) sendAction(CampNet::CMD_REBOOT, "", 0.0F); });
+  server_.on("/api/speaker/search", HTTP_POST, [this]() { if (authorize()) sendAction(CampNet::CMD_SPEAKER_SEARCH, "", 0.0F); });
+  server_.on("/api/enroll", HTTP_POST, [this]() { if (authorize()) sendAction(CampNet::CMD_ENROLL, server_.arg("name"), 0.0F); });
+  server_.on("/api/cancel", HTTP_POST, [this]() { if (authorize()) sendAction(CampNet::CMD_CANCEL_ENROLL, "", 0.0F); });
   server_.on("/api/member", HTTP_POST, [this]() { if (authorize()) updateMember(); });
   server_.on("/api/rename", HTTP_POST, [this]() { if (authorize()) renameMember(); });
   server_.on("/api/delete", HTTP_POST, [this]() { if (authorize()) deleteMember(); });
   server_.on("/api/password", HTTP_POST, [this]() { if (authorize()) changePassword(); });
-  server_.on("/api/calibration/start", HTTP_POST, [this]() { if (authorize()) startCalibration(); });
-  server_.on("/api/calibration/stop", HTTP_POST, [this]() { if (authorize()) stopCalibration(); });
+  server_.on("/api/calibration/start", HTTP_POST, [this]() { if (authorize()) sendAction(CampNet::CMD_CALIBRATION_START, "", 0.0F); });
+  server_.on("/api/calibration/stop", HTTP_POST, [this]() {
+    if (authorize()) sendAction(CampNet::CMD_CALIBRATION_STOP, "", server_.arg("gallons").toFloat());
+  });
   server_.on("/api/music/calibration/start", HTTP_POST,
-             [this]() { if (authorize()) startMusicCalibration(); });
+             [this]() { if (authorize()) sendAction(CampNet::CMD_MUSIC_CAL_START, "", 0.0F); });
   server_.on("/api/music/calibration/capture", HTTP_POST,
-             [this]() { if (authorize()) captureMusicCalibration(); });
+             [this]() { if (authorize()) sendAction(CampNet::CMD_MUSIC_CAL_CAPTURE, "", 0.0F); });
   server_.on("/api/music/calibration/cancel", HTTP_POST,
-             [this]() { if (authorize()) cancelMusicCalibration(); });
-  server_.on("/api/audio/tone", HTTP_POST, [this]() {
+             [this]() { if (authorize()) sendAction(CampNet::CMD_MUSIC_CAL_CANCEL, "", 0.0F); });
+  server_.on("/api/audio/tone", HTTP_POST, [this]() { if (authorize()) sendAction(CampNet::CMD_AUDIO_TONE, "", 0.0F); });
+  server_.on("/api/audio/play", HTTP_POST, [this]() { if (authorize()) sendAction(CampNet::CMD_AUDIO_PLAY, "", 0.0F); });
+  server_.on("/api/audio/stop", HTTP_POST, [this]() { if (authorize()) sendAction(CampNet::CMD_AUDIO_STOP, "", 0.0F); });
+  server_.on("/api/audio/volume", HTTP_POST, [this]() {
     if (!authorize()) return;
-    sendJsonMessage(speakerAudio_.playTestTone() ? 200 : 409,
-                    speakerAudio_.connected(), speakerAudio_.connected() ? "Test tone started" : "Speaker not connected");
+    long percent = 0;
+    if (!parseVolume(server_.arg("volume"), percent)) return sendJsonMessage(400, false, "Volume must be 0-100");
+    sendAction(CampNet::CMD_AUDIO_VOLUME, "", static_cast<float>(percent));
   });
-  server_.on("/api/audio/play", HTTP_POST, [this]() {
-    if (!authorize()) return;
-    const bool started = speakerAudio_.playSong();
-    sendJsonMessage(started ? 200 : 409, started,
-                    started ? "Song started" : "Connect speaker and upload audio first");
-  });
-  server_.on("/api/audio/stop", HTTP_POST, [this]() {
-    if (!authorize()) return;
-    speakerAudio_.stop();
-    sendJsonMessage(200, true, "Audio stopped");
-  });
-  server_.on("/api/audio/volume", HTTP_POST,
-             [this]() { if (authorize()) setSpeakerVolume(); });
   server_.on("/api/limits", HTTP_POST, [this]() { if (authorize()) setRoleLimits(); });
   server_.on("/api/audio/upload", HTTP_POST,
              [this]() {
@@ -262,6 +357,390 @@ void AdminServer::configureRoutes() {
              [this]() { handleAudioUpload(); });
   server_.onNotFound([this]() { if (authorize()) sendJsonMessage(404, false, "Not found"); });
 }
+
+// ---- Telemetry published over CampNet and rendered for every station ----
+
+void AdminServer::publishTelemetry() {
+  CampNet::TelemetryPacket telemetry;
+  buildTelemetry(telemetry);
+  net_.setLocalTelemetry(telemetry);
+
+  const size_t count = sessions_.recentCount();
+  const uint32_t newestEndMs = count ? sessions_.recentAt(0).endMs : 0;
+  if (recentPublished_ && count == publishedRecentCount_ && newestEndMs == publishedRecentEndMs_) return;
+  CampNet::RecentPacket recent;
+  buildRecent(recent);
+  net_.setLocalRecent(recent);
+  recentPublished_ = true;
+  publishedRecentCount_ = count;
+  publishedRecentEndMs_ = newestEndMs;
+}
+
+void AdminServer::buildTelemetry(CampNet::TelemetryPacket& t) const {
+  memset(&t, 0, sizeof(t));
+  t.uptimeS = millis() / 1000UL;
+  t.freeHeap = ESP.getFreeHeap();
+  t.minFreeHeap = ESP.getMinFreeHeap();
+  t.audioUnderruns = speakerAudio_.bufferUnderruns();
+  t.calibrationPulses = calibrationPulses_;
+  t.pulsesPerGallon = settings_.pulsesPerGallon();
+  t.sessionGallons = sessionGallons_;
+  t.sessionLimit = sessionLimit_;
+  t.musicKnobRaw = musicKnobRaw_;
+  const bool knobCalibrated = settings_.musicKnobCalibrated();
+  if (knobCalibrated) {
+    for (uint8_t i = 0; i < CampNet::MUSIC_POSITIONS && i < Config::MUSIC_KNOB_POSITION_COUNT; ++i) {
+      t.musicPositions[i] = settings_.musicKnobPosition(i);
+    }
+  }
+  const bool sdOk = pulseStorage_.healthy() && sessions_.healthy() && settings_.healthy() && registry_.healthy();
+  t.flags = (sdOk ? CampNet::TELEM_SD_OK : 0) | (hubReady_ ? CampNet::TELEM_HUB_OK : 0) |
+            (relayReady_ ? CampNet::TELEM_RELAY_OK : 0) | (rfidReady_ ? CampNet::TELEM_RFID_OK : 0) |
+            (calibrationActive_ ? CampNet::TELEM_CALIBRATION_ACTIVE : 0) |
+            (speakerAudio_.connected() ? CampNet::TELEM_SPEAKER_CONNECTED : 0) |
+            (speakerAudio_.fileAvailable() ? CampNet::TELEM_AUDIO_FILE : 0) |
+            (musicCalibrationActive_ ? CampNet::TELEM_MUSIC_CAL_ACTIVE : 0);
+  t.features = (Config::HAS_MUSIC ? CampNet::FEATURE_MUSIC : 0) |
+               (Config::HAS_LED_STRIP ? CampNet::FEATURE_LEDS : 0) |
+               (Config::HAS_DOOR_SIGN ? CampNet::FEATURE_DOOR_SIGN : 0) |
+               (enrollmentPending_ ? CampNet::FEATURE_ENROLL_PENDING : 0) |
+               (knobCalibrated ? CampNet::FEATURE_MUSIC_CALIBRATED : 0) |
+               (pumpOn_ ? CampNet::FEATURE_PUMP_ON : 0);
+  t.doorState = doorState_;
+  t.wifiClients = WiFi.softAPgetStationNum();
+  t.speakerVolume = speakerAudio_.speakerVolumePercent();
+  t.musicChannel = musicChannel_;
+  t.musicCalNext = musicCalibrationNextPosition_;
+  strlcpy(t.activeName, activeName_, sizeof(t.activeName));
+  strlcpy(t.pendingName, pendingName_.c_str(), sizeof(t.pendingName));
+  strlcpy(t.speaker, speakerAudio_.connectionLabel(), sizeof(t.speaker));
+  strlcpy(t.playback, speakerAudio_.playbackLabel(), sizeof(t.playback));
+  strlcpy(t.calibrationMessage, calibrationMessage_.c_str(), sizeof(t.calibrationMessage));
+  strlcpy(t.message, lastMessage_.c_str(), sizeof(t.message));
+}
+
+void AdminServer::buildRecent(CampNet::RecentPacket& r) const {
+  memset(&r, 0, sizeof(r));
+  const size_t count = sessions_.recentCount();
+  r.count = static_cast<uint8_t>(count < CampNet::RECENT_ENTRIES_PER_PACKET ? count : CampNet::RECENT_ENTRIES_PER_PACKET);
+  for (uint8_t i = 0; i < r.count; ++i) {
+    const SessionStorage::Record& record = sessions_.recentAt(i);
+    CampNet::RecentEntry& entry = r.entries[i];
+    entry.uidLen = CampNet::uidFromHex(record.uid, entry.uid);
+    entry.gallons = record.gallons;
+    const uint32_t seconds = (record.endMs - record.startMs) / 1000UL;
+    entry.durationS = static_cast<uint16_t>(seconds > 65535UL ? 65535UL : seconds);
+    entry.reason = CampNet::sessionReasonCode(record.reason);
+  }
+}
+
+String AdminServer::telemetryJson(const CampNet::TelemetryPacket& t) const {
+  const bool calibrated = t.features & CampNet::FEATURE_MUSIC_CALIBRATED;
+  const uint8_t safeChannel =
+      t.musicChannel >= 0 && t.musicChannel < Config::MUSIC_KNOB_POSITION_COUNT
+          ? static_cast<uint8_t>(t.musicChannel) : 0;
+  String body;
+  body.reserve(1024);
+  body += "{\"calibrationActive\":"; body += boolJson(t.flags & CampNet::TELEM_CALIBRATION_ACTIVE);
+  body += ",\"calibrationPulses\":" + String(t.calibrationPulses);
+  body += ",\"calibrationMessage\":\"" + jsonEscape(field(t.calibrationMessage)) + "\"";
+  body += ",\"pulsesPerGallon\":" + String(t.pulsesPerGallon, 4);
+  body += ",\"speaker\":\"" + jsonEscape(field(t.speaker)) + "\"";
+  body += ",\"audioPlayback\":\"" + jsonEscape(field(t.playback)) + "\"";
+  body += ",\"audioFile\":"; body += boolJson(t.flags & CampNet::TELEM_AUDIO_FILE);
+  body += ",\"speakerVolume\":" + String(t.speakerVolume);
+  body += ",\"musicKnobRaw\":" + String(t.musicKnobRaw);
+  body += ",\"musicChannel\":" + String(t.musicChannel);
+  body += ",\"musicChannelName\":\"" + jsonEscape(Config::MUSIC_CHANNEL_NAMES[safeChannel]) + "\"";
+  body += ",\"musicKnobCalibrated\":"; body += boolJson(calibrated);
+  body += ",\"musicCalibrationActive\":"; body += boolJson(t.flags & CampNet::TELEM_MUSIC_CAL_ACTIVE);
+  body += ",\"musicCalibrationNext\":" + String(t.musicCalNext);
+  body += ",\"musicPositions\":[";
+  for (uint8_t i = 0; i < CampNet::MUSIC_POSITIONS; ++i) {
+    if (i) body += ',';
+    if (calibrated) body += String(t.musicPositions[i]);
+    else body += "null";
+  }
+  body += "],\"enrollmentPending\":"; body += boolJson(t.features & CampNet::FEATURE_ENROLL_PENDING);
+  body += ",\"pendingName\":\"" + jsonEscape(field(t.pendingName)) + "\"";
+  body += ",\"message\":\"" + jsonEscape(field(t.message)) + "\"";
+  body += ",\"features\":{\"music\":"; body += boolJson(t.features & CampNet::FEATURE_MUSIC);
+  body += ",\"leds\":"; body += boolJson(t.features & CampNet::FEATURE_LEDS);
+  body += ",\"doorSign\":"; body += boolJson(t.features & CampNet::FEATURE_DOOR_SIGN);
+  body += "},\"health\":{\"uptimeS\":" + String(t.uptimeS);
+  body += ",\"freeHeap\":" + String(t.freeHeap);
+  body += ",\"minFreeHeap\":" + String(t.minFreeHeap);
+  body += ",\"wifiClients\":" + String(t.wifiClients);
+  body += ",\"hub\":"; body += boolJson(t.flags & CampNet::TELEM_HUB_OK);
+  body += ",\"relay\":"; body += boolJson(t.flags & CampNet::TELEM_RELAY_OK);
+  body += ",\"rfid\":"; body += boolJson(t.flags & CampNet::TELEM_RFID_OK);
+  body += ",\"sd\":"; body += boolJson(t.flags & CampNet::TELEM_SD_OK);
+  body += ",\"audioUnderruns\":" + String(t.audioUnderruns);
+  body += "},\"session\":{\"active\":"; body += boolJson(t.activeName[0] != '\0');
+  body += ",\"name\":\"" + jsonEscape(field(t.activeName)) + "\"";
+  body += ",\"gallons\":" + String(t.sessionGallons, 3);
+  body += ",\"limit\":" + String(t.sessionLimit, 2);
+  body += ",\"pumpOn\":"; body += boolJson(t.features & CampNet::FEATURE_PUMP_ON);
+  body += ",\"doorState\":" + String(t.doorState) + "}}";
+  return body;
+}
+
+String AdminServer::recentJson(const CampNet::RecentPacket& r) const {
+  const uint8_t count = r.count < CampNet::RECENT_ENTRIES_PER_PACKET ? r.count : CampNet::RECENT_ENTRIES_PER_PACKET;
+  String body;
+  body.reserve(count * 110 + 4);
+  body += '[';
+  for (uint8_t i = 0; i < count; ++i) {
+    if (i) body += ',';
+    const CampNet::RecentEntry& entry = r.entries[i];
+    char hex[CampNet::UID_BYTES * 2 + 1];
+    CampNet::uidToHex(entry.uid, entry.uidLen, hex);
+    const char* name = registry_.nameFor(hex);
+    body += "{\"name\":\"" + jsonEscape(name ? name : "Deleted member");
+    body += "\",\"uid\":\"" + String(hex);
+    body += "\",\"gallons\":" + String(entry.gallons, 4);
+    body += ",\"durationS\":" + String(entry.durationS);
+    body += ",\"reason\":\"" + String(CampNet::sessionReasonName(entry.reason)) + "\"}";
+  }
+  body += ']';
+  return body;
+}
+
+String AdminServer::stationsJson() const {
+  String body;
+  body.reserve(1600 * (net_.peerCount() + 1) + 4);
+  body += '[';
+  bool first = true;
+  CampNet::TelemetryPacket telemetry;
+  CampNet::RecentPacket recent;
+  for (uint8_t id = 1; id <= CampNet::MAX_STATIONS; ++id) {
+    const bool local = id == Config::STATION_ID_VALUE;
+    const CampNetLink::Peer& peer = net_.peer(id);
+    if (!local && !peer.seen) continue;
+    if (local) {
+      buildTelemetry(telemetry);
+      buildRecent(recent);
+    } else {
+      const CampNetLink::RemoteTelemetry& remote = net_.telemetry(id);
+      if (remote.valid) memcpy(&telemetry, &remote.packet, sizeof(telemetry));
+      else memset(&telemetry, 0, sizeof(telemetry));
+      const CampNetLink::RemoteRecent& remoteRecent = net_.recent(id);
+      if (remoteRecent.valid) memcpy(&recent, &remoteRecent.packet, sizeof(recent));
+      else memset(&recent, 0, sizeof(recent));
+    }
+    if (!first) body += ',';
+    first = false;
+    const uint8_t role = local ? Config::STATION_ROLE_VALUE : peer.role;
+    body += "{\"id\":" + String(id) + ",\"name\":\"" + String(Config::STATION_NAMES[id]) + "\"";
+    body += ",\"role\":" + String(role) + ",\"roleName\":\"" + String(CampNet::roleName(role)) + "\"";
+    body += ",\"local\":"; body += boolJson(local);
+    body += ",\"online\":"; body += boolJson(local || net_.peerOnline(id));
+    body += ",\"lastSeenS\":" + String(local ? 0UL : (millis() - peer.lastSeenMs) / 1000UL);
+    body += ",\"telemetry\":";
+    body += telemetryJson(telemetry);
+    body += ",\"recent\":";
+    body += recentJson(recent);
+    body += '}';
+  }
+  body += ']';
+  return body;
+}
+
+// ---- Station actions: one implementation per action, local or remote ----
+
+int AdminServer::runAction(uint8_t action, const String& text, float value, String& message) {
+  if (!Config::HAS_MUSIC && needsMusic(action)) {
+    message = "Not available on a fill station";
+    return 501;
+  }
+  switch (action) {
+    case CampNet::CMD_ENROLL: {
+      String name = text;
+      name.trim();
+      if (!registry_.healthy()) { message = "Member storage unavailable"; return 503; }
+      if (name.isEmpty() || name.length() > 32) { message = "Name must be 1-32 characters"; return 400; }
+      pendingName_ = name;
+      enrollmentPending_ = true;
+      lastMessage_ = "Waiting for wristband";
+      message = "Tap wristband on reader";
+      return 200;
+    }
+    case CampNet::CMD_CANCEL_ENROLL:
+      enrollmentPending_ = false;
+      pendingName_ = "";
+      lastMessage_ = "Enrollment cancelled";
+      message = lastMessage_;
+      return 200;
+    case CampNet::CMD_CALIBRATION_START:
+      calibrationStartRequested_ = true;
+      calibrationMessage_ = "Starting…";
+      message = "Calibration requested";
+      return 200;
+    case CampNet::CMD_CALIBRATION_STOP:
+      if (!(value > 0.0F)) { message = "Enter a known volume"; return 400; }
+      calibrationKnownGallons_ = value;
+      calibrationStopRequested_ = true;
+      message = "Stop requested";
+      return 200;
+    case CampNet::CMD_MUSIC_CAL_START:
+      musicCalibrationStartRequested_ = true;
+      musicCalibrationMessage_ = "Starting...";
+      message = "Music knob calibration requested";
+      return 200;
+    case CampNet::CMD_MUSIC_CAL_CAPTURE:
+      if (!musicCalibrationActive_) { message = "Start music knob calibration first"; return 409; }
+      musicCalibrationCaptureRequested_ = true;
+      message = "Position capture requested";
+      return 200;
+    case CampNet::CMD_MUSIC_CAL_CANCEL:
+      musicCalibrationCancelRequested_ = true;
+      message = "Music knob calibration cancelled";
+      return 200;
+    case CampNet::CMD_AUDIO_TONE: {
+      const bool started = speakerAudio_.playTestTone();
+      message = started ? "Test tone started" : "Speaker not connected";
+      return started ? 200 : 409;
+    }
+    case CampNet::CMD_AUDIO_PLAY: {
+      const bool started = speakerAudio_.playSong();
+      message = started ? "Song started" : "Connect speaker and upload audio first";
+      return started ? 200 : 409;
+    }
+    case CampNet::CMD_AUDIO_STOP:
+      speakerAudio_.stop();
+      message = "Audio stopped";
+      return 200;
+    case CampNet::CMD_AUDIO_VOLUME: {
+      if (value < 0.0F || value > 100.0F) { message = "Volume must be 0-100"; return 400; }
+      const uint8_t percent = static_cast<uint8_t>(value);
+      if (!settings_.setSpeakerVolumePercent(percent)) { message = "Could not save volume to SD card"; return 503; }
+      speakerAudio_.setSpeakerVolumePercent(percent);
+      message = String("Speaker volume set to ") + percent + "%";
+      return 200;
+    }
+    case CampNet::CMD_SPEAKER_SEARCH:
+      speakerSearchRequested_ = true;
+      message = "Searching for speaker";
+      return 200;
+    case CampNet::CMD_REBOOT:
+      rebootRequested_ = true;
+      rebootReadyMs_ = millis();
+      message = "Rebooting";
+      return 200;
+    case CampNet::CMD_END_SESSION:
+      if (activeName_[0] == '\0') { message = "No active session"; return 409; }
+      endSessionRequested_ = true;
+      lastMessage_ = "Session end requested";
+      message = "Ending session";
+      return 200;
+    default:
+      message = "Unknown action";
+      return 400;
+  }
+}
+
+void AdminServer::sendAction(uint8_t action, const String& text, float value) {
+  String message;
+  const int code = runAction(action, text, value, message);
+  sendJsonMessage(code, code == 200, message);
+}
+
+void AdminServer::drainRemoteCommands() {
+  CampNetLink::IncomingCommand command;
+  for (uint8_t n = 0; n < COMMAND_DRAIN_PER_LOOP && net_.takeIncomingCommand(command); ++n) {
+    const uint8_t argLen = command.argLen < CampNet::COMMAND_ARG_BYTES ? command.argLen : CampNet::COMMAND_ARG_BYTES;
+    String text;
+    float value = 0.0F;
+    switch (command.action) {
+      case CampNet::CMD_ENROLL:
+        text.reserve(argLen);
+        for (uint8_t i = 0; i < argLen && command.args[i] != '\0'; ++i) text += static_cast<char>(command.args[i]);
+        break;
+      case CampNet::CMD_CALIBRATION_STOP:
+        if (argLen >= sizeof(float)) memcpy(&value, command.args, sizeof(float));
+        break;
+      case CampNet::CMD_AUDIO_VOLUME:
+        value = argLen >= 1 ? static_cast<float>(command.args[0]) : -1.0F;
+        break;
+      default:
+        break;
+    }
+    String message;
+    const int code = runAction(command.action, text, value, message);
+    if (code == 200 && command.action == CampNet::CMD_REBOOT) rebootReadyMs_ = millis() + REMOTE_REBOOT_DELAY_MS;
+    const uint8_t status = code == 200 ? CampNet::ACK_OK : code == 501 ? CampNet::ACK_UNSUPPORTED : CampNet::ACK_REJECTED;
+    net_.respondToCommand(command, status, message.c_str());
+    Serial.printf("[ADMIN] remote command %u from station %u -> %d %s\n",
+                  command.action, command.fromStation, code, message.c_str());
+  }
+}
+
+void AdminServer::handleCommandPost() {
+  const uint8_t action = actionFromName(server_.arg("action"));
+  if (action == 0) return sendJsonMessage(400, false, "Unknown action");
+  const long station = server_.arg("station").toInt();
+  if (station < 1 || station > CampNet::MAX_STATIONS) return sendJsonMessage(400, false, "Unknown station");
+
+  String text = server_.arg("name");
+  text.trim();
+  float value = 0.0F;
+  uint8_t args[CampNet::COMMAND_ARG_BYTES] = {0};
+  uint8_t argLen = 0;
+  switch (action) {
+    case CampNet::CMD_ENROLL:
+      if (text.isEmpty() || text.length() > 32) return sendJsonMessage(400, false, "Name must be 1-32 characters");
+      argLen = static_cast<uint8_t>(text.length());
+      memcpy(args, text.c_str(), argLen);
+      break;
+    case CampNet::CMD_CALIBRATION_STOP:
+      value = server_.arg("gallons").toFloat();
+      if (!(value > 0.0F)) return sendJsonMessage(400, false, "Enter a known volume");
+      memcpy(args, &value, sizeof(value));
+      argLen = sizeof(value);
+      break;
+    case CampNet::CMD_AUDIO_VOLUME: {
+      long percent = 0;
+      if (!parseVolume(server_.arg("volume"), percent)) return sendJsonMessage(400, false, "Volume must be 0-100");
+      value = static_cast<float>(percent);
+      args[0] = static_cast<uint8_t>(percent);
+      argLen = 1;
+      break;
+    }
+    default:
+      break;
+  }
+  if (station == Config::STATION_ID_VALUE) return sendAction(action, text, value);
+
+  const uint32_t nonce = net_.sendCommand(static_cast<uint8_t>(station), action, args, argLen);
+  if (nonce == 0) return sendJsonMessage(503, false, "Station link unavailable");
+  server_.send(202, "application/json",
+               String("{\"ok\":true,\"pending\":true,\"nonce\":") + nonce + '}');
+}
+
+void AdminServer::handleCommandPoll() {
+  const uint32_t nonce = strtoul(server_.arg("nonce").c_str(), nullptr, 10);
+  const CampNetLink::CommandResult result = net_.commandResult(nonce);
+  using State = CampNetLink::CommandResult::State;
+  const char* state = result.state == State::Pending ? "pending"
+                    : result.state == State::Done ? "done"
+                    : result.state == State::Timeout ? "timeout" : "unknown";
+  String message = field(result.message);
+  if (result.state == State::Done && message.isEmpty()) {
+    message = result.status == CampNet::ACK_OK ? "Done"
+            : result.status == CampNet::ACK_UNSUPPORTED ? "Not supported on that station"
+            : result.status == CampNet::ACK_UNAUTHORIZED ? "Station rejected the request as unauthorized"
+            : "Rejected";
+  }
+  String body;
+  body.reserve(160);
+  body += String("{\"state\":\"") + state + "\",\"ok\":";
+  body += boolJson(result.state == State::Done && result.status == CampNet::ACK_OK);
+  body += ",\"status\":" + String(result.status);
+  body += ",\"message\":\"" + jsonEscape(message) + "\"}";
+  server_.send(200, "application/json", body);
+}
+
+// ---- Legacy JSON views ----
 
 String AdminServer::sessionsJson() const {
   String body;
@@ -401,14 +880,8 @@ String AdminServer::membersJson() const {
   return body;
 }
 
-void AdminServer::armEnrollment() {
-  String name = server_.arg("name"); name.trim();
-  if (!registry_.healthy()) return sendJsonMessage(503, false, "Member storage unavailable");
-  if (name.isEmpty() || name.length() > 32) return sendJsonMessage(400, false, "Name must be 1-32 characters");
-  pendingName_ = name; enrollmentPending_ = true; lastMessage_ = "Waiting for wristband";
-  sendJsonMessage(200, true, "Tap wristband on reader");
-}
-void AdminServer::cancelEnrollment() { enrollmentPending_ = false; pendingName_ = ""; lastMessage_ = "Enrollment cancelled"; sendJsonMessage(200, true, lastMessage_); }
+// ---- Camp-wide (member / limits / password) endpoints ----
+
 void AdminServer::renameMember() { server_.sendHeader("Location", "/api/member"); updateMember(); }
 void AdminServer::updateMember() {
   const String uid = server_.arg("uid"), name = server_.arg("name");
@@ -439,28 +912,11 @@ void AdminServer::setRoleLimits() {
   lastMessage_ = "Station limits saved";
   sendJsonMessage(200, true, lastMessage_);
 }
-void AdminServer::changePassword() { if (!settings_.setPassword(server_.arg("password"))) return sendJsonMessage(400, false, "Password must be 8-64 characters"); sendJsonMessage(200, true, "Password changed"); }
-void AdminServer::startCalibration() { calibrationStartRequested_ = true; calibrationMessage_ = "Starting…"; sendJsonMessage(200, true, "Calibration requested"); }
-void AdminServer::stopCalibration() { const float gallons = server_.arg("gallons").toFloat(); if (gallons <= 0.0F) return sendJsonMessage(400, false, "Enter a known volume"); calibrationKnownGallons_ = gallons; calibrationStopRequested_ = true; sendJsonMessage(200, true, "Stop requested"); }
-void AdminServer::startMusicCalibration() { musicCalibrationStartRequested_ = true; musicCalibrationMessage_ = "Starting..."; sendJsonMessage(200, true, "Music knob calibration requested"); }
-void AdminServer::captureMusicCalibration() { if (!musicCalibrationActive_) return sendJsonMessage(409, false, "Start music knob calibration first"); musicCalibrationCaptureRequested_ = true; sendJsonMessage(200, true, "Position capture requested"); }
-void AdminServer::cancelMusicCalibration() { musicCalibrationCancelRequested_ = true; sendJsonMessage(200, true, "Music knob calibration cancelled"); }
-
-void AdminServer::setSpeakerVolume() {
-  const String value = server_.arg("volume");
-  if (value.isEmpty()) return sendJsonMessage(400, false, "Volume must be 0-100");
-  for (size_t i = 0; i < value.length(); ++i) {
-    if (!isDigit(value[i])) return sendJsonMessage(400, false, "Volume must be 0-100");
-  }
-  const long percent = value.toInt();
-  if (percent < 0 || percent > 100) {
-    return sendJsonMessage(400, false, "Volume must be 0-100");
-  }
-  if (!settings_.setSpeakerVolumePercent(static_cast<uint8_t>(percent))) {
-    return sendJsonMessage(503, false, "Could not save volume to SD card");
-  }
-  speakerAudio_.setSpeakerVolumePercent(static_cast<uint8_t>(percent));
-  sendJsonMessage(200, true, String("Speaker volume set to ") + percent + "%");
+void AdminServer::changePassword() {
+  if (!settings_.setPassword(server_.arg("password"))) return sendJsonMessage(400, false, "Password must be 8-64 characters");
+  // CampNet syncs the new salted hash so one password opens every station.
+  net_.markAuthDirty();
+  sendJsonMessage(200, true, "Password changed");
 }
 
 void AdminServer::handleAudioUpload() {

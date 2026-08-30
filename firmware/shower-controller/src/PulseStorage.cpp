@@ -4,8 +4,15 @@
 #include <SPI.h>
 
 #include "Config.h"
+#include "PsramAlloc.h"
 
 bool PulseStorage::begin() {
+  if (totals_ == nullptr) totals_ = psramArray<TagTotal>(MAX_TAGS);
+  if (totals_ == nullptr) {
+    healthy_ = false;
+    return false;
+  }
+  tagCount_ = 0;
   SPI.begin(Config::SD_SCK, Config::SD_MISO, Config::SD_MOSI, Config::SD_CS);
   healthy_ = SD.begin(Config::SD_CS, SPI, Config::SD_FREQUENCY);
   if (!healthy_ || SD.cardType() == CARD_NONE) {

@@ -3,9 +3,12 @@
 #include <SD.h>
 
 #include "Config.h"
+#include "PsramAlloc.h"
 
 bool UsageLedger::begin() {
   entryCount_ = 0;
+  if (entries_ == nullptr) entries_ = psramArray<Entry>(MAX_ENTRIES);
+  if (entries_ == nullptr) return false;
   if (SD.cardType() == CARD_NONE) return false;
   if (!SD.exists(Config::NET_USAGE_PATH) && SD.exists("/NETUSAGE.BAK")) {
     SD.rename("/NETUSAGE.BAK", Config::NET_USAGE_PATH);
@@ -24,7 +27,7 @@ void UsageLedger::handle() {
 
 bool UsageLedger::upsert(uint8_t stationId, uint8_t role, const char* uidHex,
                          float gallons, uint32_t sessions) {
-  if (uidHex == nullptr || uidHex[0] == '\0' || strlen(uidHex) >= UID_SIZE ||
+  if (entries_ == nullptr || uidHex == nullptr || uidHex[0] == '\0' || strlen(uidHex) >= UID_SIZE ||
       stationId == 0 || stationId > CampNet::MAX_STATIONS ||
       stationId == Config::STATION_ID_VALUE || !isfinite(gallons) || gallons < 0.0F) {
     return false;

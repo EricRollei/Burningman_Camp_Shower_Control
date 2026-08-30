@@ -19,6 +19,17 @@ class SettingsStore {
   bool setPassword(const String& password);
   bool verifyPassword(const String& password) const;
 
+  // Admin password sync across stations, versioned like limits. The initial
+  // password a fresh card is seeded with stays at version 0 so any real
+  // change made anywhere in camp wins over it.
+  uint32_t authVersion() const { return authVersion_; }
+  const uint8_t* salt() const { return salt_; }
+  const uint8_t* passwordHash() const { return passwordHash_; }
+  // Network update. Adopts a strictly newer version, or an equal version with
+  // different content from a lower station id. Returns true if adopted.
+  bool applyRemoteAuth(uint32_t version, uint8_t fromStationId,
+                       const uint8_t salt[16], const uint8_t hash[32]);
+
   // Per-role session limits, synced across stations by version number.
   const RoleLimits& roleLimits(uint8_t role) const;
   uint32_t limitsVersion() const { return limitsVersion_; }
@@ -52,6 +63,8 @@ class SettingsStore {
   RoleLimits roleLimits_[CampNet::ROLE_COUNT];
   uint32_t limitsVersion_ = 0;
   uint32_t highestSeenLimitsVersion_ = 0;
+  uint32_t authVersion_ = 0;
+  uint32_t highestSeenAuthVersion_ = 0;
   bool hasPassword_ = false;
   bool musicKnobCalibrated_ = false;
   bool healthy_ = false;

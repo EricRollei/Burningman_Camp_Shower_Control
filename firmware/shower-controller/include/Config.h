@@ -145,9 +145,27 @@ constexpr uint32_t MAX_CALIBRATION_MS = 10UL * 60UL * 1000UL;
 constexpr char NET_USAGE_PATH[] = "/NETUSAGE.CSV";
 constexpr char MEMBER_VERSION_PATH[] = "/MEMBERS.VER";
 constexpr uint32_t NET_STATUS_INTERVAL_MS = 500;
-constexpr uint32_t NET_USAGE_INTERVAL_MS = 10000;
+// USAGE/MEMBERS/LIMITS/AUTH periodic resends are skipped while every online
+// peer already holds the same version/content; NET_USAGE_REFRESH_MS is the
+// unconditional fallback so a lost usage chunk still heals.
+constexpr uint32_t NET_USAGE_INTERVAL_MS = 30000;
+constexpr uint32_t NET_USAGE_REFRESH_MS = 300000;
 constexpr uint32_t NET_MEMBERS_INTERVAL_MS = 30000;
 constexpr uint32_t NET_LIMITS_INTERVAL_MS = 30000;
+constexpr uint32_t NET_AUTH_INTERVAL_MS = 30000;
+// Single admin page: telemetry every 2 s (and on change, rate-floored so a
+// chatty status line cannot flood the tx ring), recent sessions every 30 s.
+constexpr uint32_t NET_TELEMETRY_INTERVAL_MS = 2000;
+constexpr uint32_t NET_TELEMETRY_MIN_INTERVAL_MS = 200;
+constexpr uint32_t NET_RECENT_INTERVAL_MS = 30000;
+// Remote admin commands: resend until ACKed, then keep the result around for
+// the HTTP poller. Receivers remember (sender, nonce) pairs to drop replays
+// and answer duplicates with the cached ACK, which is itself sent twice.
+constexpr uint32_t NET_COMMAND_RETRY_MS = 400;
+constexpr uint8_t NET_COMMAND_ATTEMPTS = 6;
+constexpr uint32_t NET_COMMAND_RESULT_TTL_MS = 30000;
+constexpr uint32_t NET_COMMAND_REPLAY_WINDOW_MS = 60000;
+constexpr uint32_t NET_ACK_REPEAT_MS = 250;
 constexpr uint32_t NET_PEER_TIMEOUT_MS = 15000;
 constexpr uint32_t NET_STAGING_TIMEOUT_MS = 5000;
 constexpr uint32_t NET_LEDGER_SAVE_DEBOUNCE_MS = 15000;

@@ -11,6 +11,10 @@
 #include "SpeakerAudio.h"
 #include "UsageLedger.h"
 
+// Local HTTP admin page plus the station's half of the "single admin page":
+// it publishes this station's telemetry over CampNet, executes authenticated
+// remote commands exactly like the matching local endpoint, and renders every
+// station (local + peers) from the same JSON.
 class AdminServer {
  public:
   AdminServer(MemberRegistry& registry, const PulseStorage& pulseStorage,
@@ -33,8 +37,13 @@ class AdminServer {
   void reportMusicKnob(uint16_t raw, int8_t channel, bool calibrationActive,
                        uint8_t nextPosition, const String& message);
   void reportHardware(bool hubReady, bool relayReady, bool rfidReady);
+  // Live session state for telemetry; activeName is "" when idle.
+  void reportSession(const char* activeName, float sessionGallons, float sessionLimit,
+                     bool pumpOn, uint8_t doorState);
   bool takeRebootRequest();
   bool takeSpeakerSearchRequest();
+  // Set by a remote END SESSION command; main ends the session with "REMOTE".
+  bool takeEndSessionRequest();
   bool started() const { return started_; }
 
  private:
@@ -43,18 +52,24 @@ class AdminServer {
   String membersJson() const;
   String sessionsJson() const;
   String healthJson() const;
-  void armEnrollment();
-  void cancelEnrollment();
+  String stationsJson() const;
+  String telemetryJson(const CampNet::TelemetryPacket& telemetry) const;
+  String recentJson(const CampNet::RecentPacket& recent) const;
+  void buildTelemetry(CampNet::TelemetryPacket& telemetry) const;
+  void buildRecent(CampNet::RecentPacket& recent) const;
+  void publishTelemetry();
+  void drainRemoteCommands();
+  // One implementation per station action, shared by the local HTTP route and
+  // the remote COMMAND path. Returns an HTTP status code (200 = ok,
+  // 501 = unsupported on this station role).
+  int runAction(uint8_t action, const String& text, float value, String& message);
+  void handleCommandPost();
+  void handleCommandPoll();
+  void sendAction(uint8_t action, const String& text, float value);
   void renameMember();
   void updateMember();
   void deleteMember();
   void changePassword();
-  void startCalibration();
-  void stopCalibration();
-  void startMusicCalibration();
-  void captureMusicCalibration();
-  void cancelMusicCalibration();
-  void setSpeakerVolume();
   void setRoleLimits();
   void handleAudioUpload();
   bool authorize();
@@ -91,9 +106,20 @@ class AdminServer {
   bool hubReady_ = false;
   bool relayReady_ = false;
   bool rfidReady_ = false;
+  char activeName_[33] = {0};
+  float sessionGallons_ = 0.0F;
+  float sessionLimit_ = 0.0F;
+  bool pumpOn_ = false;
+  uint8_t doorState_ = CampNet::DOOR_UNAVAILABLE;
   bool rebootRequested_ = false;
+  uint32_t rebootReadyMs_ = 0;
   bool speakerSearchRequested_ = false;
+  bool endSessionRequested_ = false;
   bool routesConfigured_ = false;
+  uint32_t lastTelemetryMs_ = 0;
+  size_t publishedRecentCount_ = 0;
+  uint32_t publishedRecentEndMs_ = 0;
+  bool recentPublished_ = false;
   File audioUploadFile_;
   bool audioUploadAuthorized_ = false;
   bool audioUploadFailed_ = false;

@@ -66,6 +66,9 @@ bool SettingsStore::begin() {
       } else if (key == "limits_version") {
         limitsVersion_ = static_cast<uint32_t>(strtoul(value.c_str(), nullptr, 10));
         highestSeenLimitsVersion_ = limitsVersion_;
+      } else if (key == "auth_version") {
+        authVersion_ = static_cast<uint32_t>(strtoul(value.c_str(), nullptr, 10));
+        highestSeenAuthVersion_ = authVersion_;
       } else if (key == "admin_salt") {
         hasPassword_ = fromHex(value, salt_, sizeof(salt_));
       } else if (key == "admin_hash") {
@@ -239,11 +242,44 @@ bool SettingsStore::setPassword(const String& password) {
   uint8_t previousHash[sizeof(passwordHash_)];
   memcpy(previousSalt, salt_, sizeof(salt_));
   memcpy(previousHash, passwordHash_, sizeof(passwordHash_));
+  const uint32_t previousVersion = authVersion_;
   for (uint8_t& value : salt_) value = static_cast<uint8_t>(esp_random());
   computeHash(password, passwordHash_);
+  authVersion_ = max(authVersion_, highestSeenAuthVersion_) + 1;
+  highestSeenAuthVersion_ = authVersion_;
   if (save()) return true;
   memcpy(salt_, previousSalt, sizeof(salt_));
   memcpy(passwordHash_, previousHash, sizeof(passwordHash_));
+  authVersion_ = previousVersion;
+  return false;
+}
+
+bool SettingsStore::applyRemoteAuth(uint32_t version, uint8_t fromStationId,
+                                    const uint8_t salt[16], const uint8_t hash[32]) {
+  if (salt == nullptr || hash == nullptr) return false;
+  if (version > highestSeenAuthVersion_) highestSeenAuthVersion_ = version;
+  const bool same = memcmp(salt, salt_, sizeof(salt_)) == 0 &&
+                    memcmp(hash, passwordHash_, sizeof(passwordHash_)) == 0;
+  const bool newer = version > authVersion_;
+  const bool tieBreak = version == authVersion_ && !same &&
+                        fromStationId < Config::STATION_ID_VALUE;
+  if (!newer && !tieBreak) return false;
+  if (!healthy_) return false;
+  uint8_t previousSalt[sizeof(salt_)];
+  uint8_t previousHash[sizeof(passwordHash_)];
+  memcpy(previousSalt, salt_, sizeof(salt_));
+  memcpy(previousHash, passwordHash_, sizeof(passwordHash_));
+  const uint32_t previousVersion = authVersion_;
+  const bool hadPassword = hasPassword_;
+  memcpy(salt_, salt, sizeof(salt_));
+  memcpy(passwordHash_, hash, sizeof(passwordHash_));
+  authVersion_ = version;
+  hasPassword_ = true;
+  if (save()) return true;
+  memcpy(salt_, previousSalt, sizeof(salt_));
+  memcpy(passwordHash_, previousHash, sizeof(passwordHash_));
+  authVersion_ = previousVersion;
+  hasPassword_ = hadPassword;
   return false;
 }
 
@@ -279,6 +315,7 @@ bool SettingsStore::save() {
     file.printf("limit_%s_min,%u\n", roleKeys[role], roleLimits_[role].minutes);
   }
   file.printf("limits_version,%lu\n", static_cast<unsigned long>(limitsVersion_));
+  file.printf("auth_version,%lu\n", static_cast<unsigned long>(authVersion_));
   file.printf("admin_salt,%s\n", toHex(salt_, sizeof(salt_)).c_str());
   file.printf("admin_hash,%s\n", toHex(passwordHash_, sizeof(passwordHash_)).c_str());
   file.flush();

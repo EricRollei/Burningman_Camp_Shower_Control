@@ -199,9 +199,10 @@ struct RecentPacket {
 };
 
 // Admin action for one station. mac = HMAC-SHA256(SECRET, bytes of the packet
-// from `header.stationId` through `args`, i.e. everything after the seq field
-// and before `mac`) truncated to 16 bytes. Receivers drop packets with a bad
-// mac and remember recent (sender, nonce) pairs to reject replays/duplicates.
+// from `header.stationId` up to but not including `mac`) truncated to 16
+// bytes; the same rule signs AckPacket and AuthPacket. Receivers drop packets
+// with a bad mac and remember recent (sender, nonce) pairs to reject
+// replays/duplicates.
 struct CommandPacket {
   Header header;
   uint8_t target;    // station id that must execute this

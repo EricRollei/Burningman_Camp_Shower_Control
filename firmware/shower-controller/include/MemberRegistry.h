@@ -55,7 +55,10 @@ class MemberRegistry {
   bool sameAs(const CampNet::MemberEntry* entries, size_t count) const;
   static bool entryToMember(const CampNet::MemberEntry& entry, Member& member);
 
-  Member members_[MAX_MEMBERS];
+  bool allocate();
+
+  Member* members_ = nullptr;   // PSRAM, MAX_MEMBERS
+  Member* scratch_ = nullptr;   // PSRAM, MAX_MEMBERS; rollback copy for snapshots
   size_t memberCount_ = 0;
   uint32_t version_ = 0;
   uint32_t highestSeenVersion_ = 0;

@@ -41,9 +41,9 @@ class SessionStorage {
   void remember(const Record& record);
   void restore();
 
-  Total totals_[MAX_TOTALS];
+  Total* totals_ = nullptr;   // PSRAM, MAX_TOTALS
   size_t totalCount_ = 0;
-  Record recent_[MAX_RECENT];
+  Record* recent_ = nullptr;  // PSRAM, MAX_RECENT
   size_t recentCount_ = 0;
   size_t recentNext_ = 0;
   bool healthy_ = false;

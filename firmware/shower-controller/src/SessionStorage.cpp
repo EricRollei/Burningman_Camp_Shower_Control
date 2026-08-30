@@ -3,8 +3,15 @@
 #include <SD.h>
 
 #include "Config.h"
+#include "PsramAlloc.h"
 
 bool SessionStorage::begin() {
+  if (totals_ == nullptr) totals_ = psramArray<Total>(MAX_TOTALS);
+  if (recent_ == nullptr) recent_ = psramArray<Record>(MAX_RECENT);
+  if (totals_ == nullptr || recent_ == nullptr) return false;
+  totalCount_ = 0;
+  recentCount_ = 0;
+  recentNext_ = 0;
   if (SD.cardType() == CARD_NONE) return false;
   if (!SD.exists(Config::SESSION_PATH)) {
     File file = SD.open(Config::SESSION_PATH, FILE_WRITE);
@@ -66,7 +73,7 @@ uint32_t SessionStorage::sessionsFor(const char* uid) const {
 
 const SessionStorage::Record& SessionStorage::recentAt(size_t index) const {
   static Record empty;
-  if (index >= recentCount_) return empty;
+  if (recent_ == nullptr || index >= recentCount_) return empty;
   const size_t oldest = recentCount_ < MAX_RECENT ? 0 : recentNext_;
   const size_t physical = (oldest + recentCount_ - 1 - index) % MAX_RECENT;
   return recent_[physical];

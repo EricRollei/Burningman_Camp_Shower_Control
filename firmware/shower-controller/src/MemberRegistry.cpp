@@ -3,9 +3,17 @@
 #include <SD.h>
 
 #include "Config.h"
+#include "PsramAlloc.h"
+
+bool MemberRegistry::allocate() {
+  if (members_ == nullptr) members_ = psramArray<Member>(MAX_MEMBERS);
+  if (scratch_ == nullptr) scratch_ = psramArray<Member>(MAX_MEMBERS);
+  return members_ != nullptr && scratch_ != nullptr;
+}
 
 bool MemberRegistry::begin() {
   memberCount_ = 0;
+  if (!allocate()) return false;
   if (SD.cardType() == CARD_NONE) return false;
 
   // Recover the previous complete file if power was lost during replacement.
@@ -200,9 +208,9 @@ bool MemberRegistry::applyRemoteSnapshot(uint8_t fromStationId, uint32_t version
     return false;
   }
 
-  // Static: ~4 KB is too much for the loop task's stack.
-  static Member previous[MAX_MEMBERS];
-  memcpy(previous, members_, sizeof(previous));
+  // Rollback copy lives in PSRAM (~4 KB is too much for the loop task's stack).
+  Member* previous = scratch_;
+  memcpy(previous, members_, sizeof(Member) * MAX_MEMBERS);
   const size_t previousCount = memberCount_;
   const uint32_t previousVersion = version_;
 
@@ -232,14 +240,14 @@ bool MemberRegistry::applyRemoteSnapshot(uint8_t fromStationId, uint32_t version
     if (bumpVersionAndSave()) return true;
   }
 
-  memcpy(members_, previous, sizeof(members_));
+  memcpy(members_, previous, sizeof(Member) * MAX_MEMBERS);
   memberCount_ = previousCount;
   version_ = previousVersion;
   return false;
 }
 
 int MemberRegistry::find(const char* uid) const {
-  if (uid == nullptr) return -1;
+  if (uid == nullptr || members_ == nullptr) return -1;
   for (size_t i = 0; i < memberCount_; ++i) {
     if (strcmp(members_[i].uid, uid) == 0) return static_cast<int>(i);
   }

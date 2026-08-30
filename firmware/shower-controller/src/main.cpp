@@ -651,6 +651,11 @@ void serviceReliability() {
   }
 
   admin.reportHardware(hubReady, relayReady, rfidReady);
+  admin.reportSession(activeName, sessionActive() ? gallonsFor(sessionPulses) : 0.0F,
+                      sessionActive() ? activeAllowance : 0.0F,
+                      relayReady && relays.isOn(Config::PUMP_RELAY), doorDisplayState());
+  // A remote END SESSION over CampNet can only stop water, never start it.
+  if (admin.takeEndSessionRequest() && sessionActive()) endSession("REMOTE");
   if (admin.takeSpeakerSearchRequest() && Config::HAS_MUSIC) speakerAudio.requestDiscovery();
   if (admin.takeRebootRequest()) {
     Serial.println("[SYSTEM] reboot requested from admin page");

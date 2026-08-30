@@ -65,5 +65,21 @@ One pass through this list before the burn. Check items off as they pass.
       (`/NETUSAGE.CSV` on the SD card).
 - [ ] **Coexistence:** play a song on a shower while an admin page is open;
       `[HEALTH]` `net_rxdrop` stays at 0 and door signs stay OPEN/IN USE.
+- [ ] **Heap headroom:** with a song streaming and the admin page open on a
+      shower Tough, `[HEALTH] min_heap` stays above ~30 KB for 10 minutes
+      (bench with nothing connected: ~39 KB free, 35 KB min).
+- [ ] **One page, every station:** sign in to Shower 1's page, open the RV
+      Fill tab — its health, session and calibration cards populate within
+      3 s and the tab shows online. Tap **Test tone** on the Shower 2 tab; the
+      speaker at Shower 2 beeps and the page reports the ACK message.
+- [ ] **Remote enroll:** from Shower 1's page choose "Enroll on: Water Fill",
+      enter a name, tap the wristband on the Water Fill reader — it enrolls
+      and appears in Members on every page.
+- [ ] **Remote end session:** start a session at Shower 2, press End session
+      from Shower 1's page — pump off within a second, logged as `REMOTE`.
+- [ ] **One password:** change the password on RV Fill's page; within 30 s
+      Shower 1's page asks for the new one.
+- [ ] **Bad command rejected:** (optional, needs a spare ESP32) a COMMAND
+      packet with a wrong secret is ignored and `[HEALTH]` shows no action.
 
 ## (add in-flight work below)

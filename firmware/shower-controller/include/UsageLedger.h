@@ -37,7 +37,7 @@ class UsageLedger {
   bool save();
   void restore();
 
-  Entry entries_[MAX_ENTRIES];
+  Entry* entries_ = nullptr;  // PSRAM, MAX_ENTRIES
   size_t entryCount_ = 0;
   bool dirty_ = false;
   bool healthy_ = false;

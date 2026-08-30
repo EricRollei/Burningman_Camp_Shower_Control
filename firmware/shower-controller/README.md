@@ -139,10 +139,47 @@ admin page.
 
 The association is written to `/MEMBERS.CSV` on the microSD card. The setup
 page lists registered tags with their camp-wide usage (showers, water fill,
-RV fill, and this station) and any custom shower limit. It supports
-enrollment, editing, disabling, and deletion; every change propagates to the
-other stations over CampNet. Deleting a registration does not delete
-historical usage. The speaker and music cards are hidden on fill stations.
+RV fill) and any custom shower limit. It supports enrollment, editing,
+disabling, and deletion; every change propagates to the other stations over
+CampNet. Deleting a registration does not delete historical usage.
+
+### One page for every station
+
+Signing in to any station's page is enough: the page shows the whole camp.
+The top of the page holds the camp-wide cards (members and usage, station
+limits, enrollment, password). Below them a **station tab bar** lists every
+station that has been heard on CampNet with an online/offline dot and its
+door state (OPEN / IN USE / UNAVAILABLE). Selecting a tab renders that
+station's cards: session status with an **End session** button, flow
+calibration, speaker and music vibe selector (shower stations only), recent
+sessions, and controller health with a reboot button. The selected tab is
+remembered in the browser. Cards grey out while a station is offline.
+
+- Every station broadcasts a `TELEMETRY` packet (state, health, calibration,
+  speaker, session) and a `RECENT` packet (last eight sessions) over CampNet;
+  the page reads them from `/api/overview` (`stations`) or `/api/stations`.
+- Buttons post to `/api/command` with the target `station`. For the station
+  you are connected to the action runs immediately. For any other station it
+  is sent as an authenticated `COMMAND` packet; the page polls
+  `/api/command?nonce=` for the `ACK` and shows its message (or "No answer
+  from <station>" after about 4 s). Actions that go over the air: enroll /
+  cancel enrollment (the wristband must be tapped on the chosen station's
+  reader, so the Enroll card has an **Enroll on** picker), flow calibration
+  start/stop, music knob calibration, test tone, play, stop, volume, find
+  speaker, end session, and reboot. Audio commands on a fill station answer
+  "not supported".
+- Remote commands are HMAC-signed with `CampNet::SECRET` and de-duplicated by
+  nonce, so a stray or replayed packet is dropped. Over the air an admin can
+  start flow calibration (which runs that station's pump, still bounded by
+  the 10-minute calibration timeout) and end a session (pump off, logged with
+  reason `REMOTE`). Nothing over the air can open a shower session or turn the
+  pump on for one; that still takes a wristband and the physical button.
+- Audio upload is local only: join the Wi-Fi of the station whose channel 1
+  track you want to replace. The upload button is disabled on other tabs.
+- Changing the password on any station syncs the new salted hash to every
+  station (`AUTH` packet), so there is one admin password for the camp.
+- The legacy per-action routes (`/api/enroll`, `/api/calibration/*`,
+  `/api/audio/*`, `/api/reboot`, ...) still work and act on the local station.
 
 ## Reliability
 
