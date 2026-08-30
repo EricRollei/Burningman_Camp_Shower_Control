@@ -88,6 +88,12 @@ operates a relay or changes a session.
    first name and last initial (`MICHAEL P.`), while numeric sister-camp
    registrations display as `MAD T 12`. Full names remain unchanged in the
    admin page and logs.
+   The ready screen prompts the camper to **TAP YOUR KEY**. Music and lighting
+   are camper-session features: the mood knob cannot start audio or lighting
+   while nobody is logged in, and ending a session immediately silences the
+   speaker and blacks out the strip. During a session, selecting a mood-knob
+   channel shows its number and song name for two seconds; the water control
+   remains available during that notice.
 3. The first physical button press or a tap on green **START WATER** starts the
    water. The screen shows live gallons, elapsed time, and a large red **STOP
    WATER** button.

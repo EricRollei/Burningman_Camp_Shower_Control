@@ -19,7 +19,11 @@ One pass through this list before the burn. Check items off as they pass.
       and serial must not report an automatic absolute-volume command.
 - [ ] **Song switching:** twist the music knob between several channels
       mid-song, including back to quiet (position 0). Each switch should be
-      clean — no garbled audio, no crash.
+      clean — no garbled audio, no crash. Each selected channel number and song
+      name should appear on the Tough for two seconds, with the water control
+      still usable. End the session while a song is playing and confirm audio
+      stops immediately. While idle, turn the mood knob through every position;
+      it must not play static or music and the LED strip must remain black.
 - [ ] **Admin page recovery:** while the page is open, power-cycle the
       controller. The header banner should turn red with "Controller not
       responding — retrying" and come back on its own once the AP is up (no
@@ -95,7 +99,8 @@ One pass through this list before the burn. Check items off as they pass.
       inspect idle, logged-in, dispensing, summary, denial, unavailable, and
       calibration screens. Confirm the red/cream sunburst, gold frame, bulbs,
       circus headlines, live gallons, elapsed time, and ticket summary are
-      legible without clipped text or visible flicker. Repeat with a long
+      legible without clipped text or visible flicker, and that idle says
+      `TAP YOUR KEY`. Repeat with a long
       member name and a member name containing a non-ASCII character.
 - [ ] **Role-specific fill screens:** flash `water_fill` and `rv_fill`; confirm
       the headers, idle prompts, open labels, used-this-fill copy, and thanks

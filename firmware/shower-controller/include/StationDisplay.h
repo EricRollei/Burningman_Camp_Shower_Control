@@ -11,6 +11,8 @@ class StationDisplay {
   void drawSession(uint8_t role, const char* name, float burnTotal,
                    float sessionGallons, uint32_t elapsedMs, bool pumpOn,
                    bool ready, uint8_t peers);
+  void drawMusicChannel(uint8_t role, uint8_t channel, const char* channelName,
+                        bool pumpOn, bool ready, uint8_t peers);
   void drawSummary(uint8_t role, float sessionGallons, float burnTotal,
                    uint32_t elapsedMs, bool logged, bool ready, uint8_t peers);
   void drawMessage(uint8_t role, const String& title, const String& body,
@@ -19,7 +21,9 @@ class StationDisplay {
   bool controlButtonContains(int16_t x, int16_t y) const;
 
  private:
-  enum class Layout { NONE, IDLE, LOGIN, ACTIVE, SUMMARY, MESSAGE, CALIBRATION };
+  enum class Layout {
+    NONE, IDLE, LOGIN, ACTIVE, MUSIC_CHANNEL, SUMMARY, MESSAGE, CALIBRATION
+  };
 
   void drawFrame();
   void drawTopStatus(uint8_t role, bool ready, uint8_t peers);

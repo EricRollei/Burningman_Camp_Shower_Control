@@ -39,6 +39,7 @@ constexpr uint16_t MUSIC_KNOB_CHANNEL_HYSTERESIS = 28;
 // Stay above that floor while remaining far below adjacent calibrated notches.
 constexpr uint16_t MUSIC_KNOB_MOTION_THRESHOLD = 64;
 constexpr uint32_t MUSIC_KNOB_SETTLE_MS = 100;
+constexpr uint32_t MUSIC_CHANNEL_DISPLAY_MS = 2000;
 // Momentary shower button: Port C yellow/GPIO14 to GND, active low.
 // First press starts the water; second press ends the shower.
 constexpr uint8_t PUMP_BUTTON_PIN = 14;

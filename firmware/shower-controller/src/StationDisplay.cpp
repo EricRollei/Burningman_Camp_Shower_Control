@@ -257,7 +257,7 @@ void StationDisplay::drawIdle(uint8_t role, bool ready, uint8_t peers) {
   drawFrame();
   drawTopStatus(role, ready, peers);
   drawBigTopText("TAP YOUR", 160, 68, 0.82F, BIG_TOP_CREAM);
-  drawBigTopText("WRISTBAND", 160, 99, 0.82F, BIG_TOP_CREAM);
+  drawBigTopText("KEY", 160, 99, 0.82F, BIG_TOP_CREAM);
   drawPlainCentered(Config::ROLE_IDLE_PROMPTS[role], 151,
                     &fonts::FreeSansBold12pt7b, 0.72F, BIG_TOP_CREAM);
   drawFooter(Config::ROLE_OPEN_LABELS[role]);
@@ -299,6 +299,34 @@ void StationDisplay::drawSession(uint8_t role, const char* name,
     layout_ = Layout::ACTIVE;
   }
   M5.Display.endWrite();
+}
+
+void StationDisplay::drawMusicChannel(uint8_t role, uint8_t channel,
+                                      const char* channelName, bool pumpOn,
+                                      bool ready, uint8_t peers) {
+  M5.Display.startWrite();
+  drawFrame();
+  drawTopStatus(role, ready, peers);
+
+  char heading[24];
+  snprintf(heading, sizeof(heading), "CHANNEL %u", channel);
+  drawBigTopText(heading, 160, 67, 0.78F, BIG_TOP_GOLD);
+
+  String name = channelName == nullptr ? "" : String(channelName);
+  name.toUpperCase();
+  M5.Display.setFont(&fonts::FreeSansBold12pt7b);
+  float scale = 0.72F;
+  M5.Display.setTextSize(scale);
+  while (M5.Display.textWidth(name) > 276 && scale > 0.44F) {
+    scale -= 0.04F;
+    M5.Display.setTextSize(scale);
+  }
+  drawPlainCentered(name, 108, &fonts::FreeSansBold12pt7b, scale,
+                    BIG_TOP_CREAM);
+  drawControlButton(pumpOn);
+  drawFooter(channel == 0 ? "MUSIC OFF" : "MUSIC SELECTED");
+  M5.Display.endWrite();
+  layout_ = Layout::MUSIC_CHANNEL;
 }
 
 void StationDisplay::drawActiveMetrics(uint8_t role, const char* name,

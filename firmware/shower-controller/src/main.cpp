@@ -20,7 +20,7 @@
 #include "UsageLedger.h"
 
 namespace {
-enum class ScreenState { IDLE, ACTIVE, MESSAGE, CALIBRATION };
+enum class ScreenState { IDLE, ACTIVE, MUSIC_CHANNEL, MESSAGE, CALIBRATION };
 
 FlowMeter flow;
 PulseStorage pulseStorage;
@@ -58,6 +58,7 @@ uint32_t lastMusicKnobReadMs = 0;
 uint32_t lastMusicKnobLogMs = 0;
 uint32_t lastMusicStartAttemptMs = 0;
 uint32_t lastMusicMovementMs = 0;
+uint32_t musicChannelUntilMs = 0;
 uint16_t musicKnobRaw = 0;
 uint16_t musicMotionReferenceRaw = 0;
 uint16_t musicCalibrationPositions[Config::MUSIC_KNOB_POSITION_COUNT] = {0};
@@ -209,6 +210,13 @@ void drawScreen() {
     stationDisplay.drawSession(Config::STATION_ROLE_VALUE, activeName, burnTotal,
                                gallonsFor(sessionPulses), millis() - sessionStartMs,
                                pumpOn, ready, peers);
+  } else if (screenState == ScreenState::MUSIC_CHANNEL) {
+    const uint8_t channel = musicChannel >= 0 ?
+        static_cast<uint8_t>(musicChannel) : 0;
+    stationDisplay.drawMusicChannel(
+        Config::STATION_ROLE_VALUE, channel,
+        Config::MUSIC_CHANNEL_NAMES[channel],
+        relays.isOn(settings.relayConfig().pump), ready, peers);
   } else if (screenState == ScreenState::CALIBRATION) {
     const uint32_t pulses = flow.totalPulses() - calibrationStartPulses;
     stationDisplay.drawCalibration(pulses, ready, peers);
@@ -274,6 +282,11 @@ bool flushPulses() {
 void endSession(const char* reason) {
   if (!sessionActive()) return;
   stopSessionOutputs();
+  if (Config::HAS_MUSIC) speakerAudio.stop();
+  musicStartPending = false;
+  musicKnobMoving = false;
+  musicStaticStarted = false;
+  musicMotionReferenceRaw = musicKnobRaw;
   const bool rawLogged = flushPulses() && pulseStorage.endTag(activeUid);
   const uint32_t endMs = millis();
   summaryGallons = gallonsFor(sessionPulses);
@@ -557,7 +570,8 @@ void handlePumpButton() {
 }
 
 void handleTouchButton() {
-  if (screenState != ScreenState::ACTIVE || !sessionActive() ||
+  if ((screenState != ScreenState::ACTIVE &&
+       screenState != ScreenState::MUSIC_CHANNEL) || !sessionActive() ||
       calibrationActive || M5.Touch.getCount() == 0) return;
 
   const auto touch = M5.Touch.getDetail();
@@ -629,6 +643,14 @@ void handleMusicKnob() {
 
   if (musicCalibrationActive) {
     musicMotionReferenceRaw = musicKnobRaw;
+  } else if (!sessionActive()) {
+    // The selector is a camper control: while idle it only tracks its physical
+    // position for telemetry. It must not start static, music, or lights.
+    musicChannel = settings.nearestMusicPosition(musicKnobRaw);
+    musicStartPending = false;
+    musicKnobMoving = false;
+    musicStaticStarted = false;
+    musicMotionReferenceRaw = musicKnobRaw;
   } else {
     const uint16_t movement = static_cast<uint16_t>(abs(
         static_cast<int>(musicKnobRaw) -
@@ -683,6 +705,11 @@ void handleMusicKnob() {
       musicChannel = candidate;
       musicStartPending = candidate > 0;
       lastMusicStartAttemptMs = now - Config::MUSIC_KNOB_RETRY_MS;
+      if (candidate != static_cast<uint8_t>(previous)) {
+        musicChannelUntilMs = now + Config::MUSIC_CHANNEL_DISPLAY_MS;
+        screenState = ScreenState::MUSIC_CHANNEL;
+        screenDirty = true;
+      }
       if (candidate == 0) {
         speakerAudio.stop();
         Serial.printf("[MUSIC] knob settled raw=%u channel %d -> quiet\n",
@@ -945,11 +972,16 @@ void loop() {
   if (sessionActive() && millis() - sessionStartMs >= activeTimeoutMs) {
     endSession("TIMEOUT");
   }
+  if (screenState == ScreenState::MUSIC_CHANNEL &&
+      static_cast<int32_t>(millis() - musicChannelUntilMs) >= 0) {
+    screenState = sessionActive() ? ScreenState::ACTIVE : ScreenState::IDLE;
+    screenDirty = true;
+  }
   if (screenState == ScreenState::MESSAGE && static_cast<int32_t>(millis() - messageUntilMs) >= 0) {
     summaryGallons = 0.0F;
     summaryElapsedMs = 0;
     summaryReady = false;
-    screenState = ScreenState::IDLE;
+    screenState = sessionActive() ? ScreenState::ACTIVE : ScreenState::IDLE;
     screenDirty = true;
   }
   static uint32_t lastActiveScreenTickMs = 0;
