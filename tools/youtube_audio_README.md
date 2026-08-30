@@ -4,6 +4,11 @@ This local tool downloads YouTube videos as MP3 files into `audio/`. It remember
 downloaded YouTube video IDs in `audio/.youtube-downloads.json`, so repeated or
 alternate URLs for the same video are skipped.
 
+The web app also inventories every supported audio file already in `audio/`
+(including nested folders), whether or not it was originally downloaded by this
+tool. Its wishlist is stored in the same manifest, so pending tracks survive a
+browser refresh or server restart.
+
 If YouTube rejects its normal media URL with HTTP 403, the downloader
 automatically retries using HLS-capable YouTube clients. Some restricted videos
 may still require a PO-token provider or browser cookies; neither is enabled by
@@ -43,7 +48,11 @@ python3 tools/youtube_audio.py --serve
 ```
 
 Then open <http://127.0.0.1:8765>. Paste one URL per line, optionally using
-`Track name | URL`, edit the queue, and click **Download batch**. Stop the server
+`Track name | URL`, and add the tracks to the wishlist. Select any wishlist
+items and click **Download selected**. Successful downloads move out of the
+wishlist and appear in the complete, searchable audio library. Stop the server
 with Ctrl-C.
+
+The library recognizes AAC, FLAC, M4A, MP3, OGG, Opus, PCM, and WAV files.
 
 Only download media you have permission to use, and follow YouTube's terms.

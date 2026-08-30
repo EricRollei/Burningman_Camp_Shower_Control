@@ -24,8 +24,10 @@ DEFAULT_AUDIO_DIR = REPO_ROOT / "audio"
 APP_FILE = Path(__file__).with_name("youtube_audio_app.html")
 MANIFEST_NAME = ".youtube-downloads.json"
 MAX_REQUEST_BYTES = 1_000_000
+MAX_ITEMS = 200
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,20}$")
 BAD_FILENAME_CHARS_RE = re.compile(r"[<>:\"/\\|?*\x00-\x1f]")
+AUDIO_EXTENSIONS = {".aac", ".flac", ".m4a", ".mp3", ".ogg", ".opus", ".pcm", ".wav"}
 YOUTUBE_HOSTS = {
     "youtube.com",
     "m.youtube.com",
@@ -85,11 +87,15 @@ class AudioDownloader:
 
     def _load_manifest(self) -> dict:
         if not self.manifest_path.exists():
-            return {"version": 1, "downloads": {}}
+            return {"version": 2, "downloads": {}, "wishlist": []}
         try:
             data = json.loads(self.manifest_path.read_text(encoding="utf-8"))
             if not isinstance(data.get("downloads"), dict):
                 raise ValueError
+            if not isinstance(data.get("wishlist", []), list):
+                raise ValueError
+            data.setdefault("wishlist", [])
+            data["version"] = 2
             return data
         except (json.JSONDecodeError, OSError, ValueError):
             raise RuntimeError(f"Cannot read manifest: {self.manifest_path}")
@@ -102,14 +108,91 @@ class AudioDownloader:
         )
         temp_path.replace(self.manifest_path)
 
-    def history(self) -> list[dict]:
+    def library(self) -> list[dict]:
+        """Return every audio file on disk, enriched with manifest metadata."""
         with self._lock:
             downloads = self._load_manifest()["downloads"]
-            return sorted(
-                downloads.values(),
-                key=lambda item: item.get("downloaded_at", ""),
-                reverse=True,
-            )
+            by_filename = {
+                item.get("filename"): item
+                for item in downloads.values()
+                if isinstance(item, dict) and item.get("filename")
+            }
+            if not self.audio_dir.exists():
+                return []
+
+            tracks = []
+            for path in self.audio_dir.rglob("*"):
+                if not path.is_file() or path.name.startswith(".") or path.suffix.lower() not in AUDIO_EXTENSIONS:
+                    continue
+                relative_path = path.relative_to(self.audio_dir).as_posix()
+                metadata = by_filename.get(relative_path) or by_filename.get(path.name) or {}
+                stat = path.stat()
+                tracks.append(
+                    {
+                        "filename": path.name,
+                        "path": relative_path,
+                        "format": path.suffix.removeprefix(".").upper(),
+                        "size_bytes": stat.st_size,
+                        "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                        "name": metadata.get("name") or path.stem,
+                        "url": metadata.get("url"),
+                        "video_id": metadata.get("video_id"),
+                        "downloaded_at": metadata.get("downloaded_at"),
+                    }
+                )
+            return sorted(tracks, key=lambda item: (item["name"].casefold(), item["path"].casefold()))
+
+    def history(self) -> list[dict]:
+        """Compatibility endpoint data, including only files that still exist."""
+        library = self.library()
+        library_names = {track["filename"] for track in library}
+        library_paths = {track["path"] for track in library}
+        with self._lock:
+            downloads = self._load_manifest()["downloads"]
+            entries = [
+                item
+                for item in downloads.values()
+                if item.get("filename") in library_names or item.get("filename") in library_paths
+            ]
+            return sorted(entries, key=lambda item: item.get("downloaded_at", ""), reverse=True)
+
+    def wishlist(self) -> list[dict]:
+        with self._lock:
+            return list(self._load_manifest()["wishlist"])
+
+    def replace_wishlist(self, items: list[dict]) -> list[dict]:
+        """Validate, deduplicate, and persist the complete wishlist."""
+        if len(items) > MAX_ITEMS:
+            raise ValueError(f"items must contain at most {MAX_ITEMS} entries")
+
+        normalized = []
+        seen = set()
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            manifest = self._load_manifest()
+            previous = {
+                item.get("video_id"): item
+                for item in manifest["wishlist"]
+                if isinstance(item, dict) and item.get("video_id")
+            }
+            for item in items:
+                if not isinstance(item, dict):
+                    raise ValueError("Every wishlist item must contain a URL and optional name")
+                video_id, url = youtube_video_id(str(item.get("url", "")))
+                if video_id in seen:
+                    continue
+                seen.add(video_id)
+                normalized.append(
+                    {
+                        "video_id": video_id,
+                        "url": url,
+                        "name": safe_name(str(item.get("name", "")), video_id) if item.get("name") else "",
+                        "added_at": previous.get(video_id, {}).get("added_at", now),
+                    }
+                )
+            manifest["wishlist"] = normalized
+            self._save_manifest(manifest)
+        return normalized
 
     def download(self, raw_url: str, requested_name: str = "") -> DownloadResult:
         try:
@@ -125,7 +208,7 @@ class AudioDownloader:
                 return DownloadResult(url, name, "error", str(exc))
 
             previous = manifest["downloads"].get(video_id)
-            if previous:
+            if previous and (self.audio_dir / str(previous.get("filename", ""))).is_file():
                 filename = previous.get("filename")
                 return DownloadResult(
                     url,
@@ -134,6 +217,9 @@ class AudioDownloader:
                     "Already downloaded",
                     filename,
                 )
+            if previous:
+                # A stale manifest entry must not prevent restoring a deleted file.
+                del manifest["downloads"][video_id]
 
             self.audio_dir.mkdir(parents=True, exist_ok=True)
             stem = name
@@ -215,6 +301,9 @@ class AudioDownloader:
                 "filename": filename,
                 "downloaded_at": datetime.now(timezone.utc).isoformat(),
             }
+            manifest["wishlist"] = [
+                item for item in manifest["wishlist"] if item.get("video_id") != video_id
+            ]
             self._save_manifest(manifest)
             return DownloadResult(url, name, "downloaded", "Downloaded", filename)
 
@@ -278,11 +367,21 @@ def make_handler(downloader: AudioDownloader):
                     self._json({"downloads": downloader.history()})
                 except RuntimeError as exc:
                     self._json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            elif self.path == "/api/library":
+                try:
+                    self._json({"tracks": downloader.library()})
+                except (OSError, RuntimeError) as exc:
+                    self._json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            elif self.path == "/api/wishlist":
+                try:
+                    self._json({"items": downloader.wishlist()})
+                except RuntimeError as exc:
+                    self._json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
 
         def do_POST(self) -> None:  # noqa: N802
-            if self.path != "/api/download":
+            if self.path not in {"/api/download", "/api/wishlist"}:
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
             try:
@@ -291,16 +390,22 @@ def make_handler(downloader: AudioDownloader):
                     raise ValueError("Invalid request size")
                 payload = json.loads(self.rfile.read(length))
                 items = payload.get("items")
-                if not isinstance(items, list) or len(items) > 200:
-                    raise ValueError("items must be a list of at most 200 entries")
+                if not isinstance(items, list) or len(items) > MAX_ITEMS:
+                    raise ValueError(f"items must be a list of at most {MAX_ITEMS} entries")
                 if not all(isinstance(item, dict) for item in items):
                     raise ValueError("Every item must contain a URL and optional name")
             except (ValueError, json.JSONDecodeError) as exc:
                 self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
                 return
 
-            results = [asdict(result) for result in downloader.download_many(items)]
-            self._json({"results": results})
+            if self.path == "/api/wishlist":
+                try:
+                    self._json({"items": downloader.replace_wishlist(items)})
+                except (RuntimeError, ValueError) as exc:
+                    self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            else:
+                results = [asdict(result) for result in downloader.download_many(items)]
+                self._json({"results": results})
 
         def log_message(self, format: str, *args: object) -> None:
             print(f"[web] {self.address_string()} - {format % args}")
