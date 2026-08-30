@@ -145,7 +145,7 @@
       <li>The button instruction is always the bottom band, always full width, always the same place — so people learn where to look.</li>
       <li>Green = water on / go, amber = running low, red = stop / denied. Colors never carry meaning alone; the words change too.</li>
       <li>Gallons show 2 decimals while showering (people like watching it tick), 1 decimal on the summary.</li>
-      <li>Warning state (bar ≥ 85 %) swaps the bar color and adds a “X gal left” line — no flashing.</li>
+      <li>No allowance bar or “gal left” nagging — people pay for water and self-limit. Screens show what you've used: this shower, and your running total.</li>
     </ul>
     <h3 style="margin-top:14px">What the Tough can actually draw</h3>
     <ul>
@@ -175,26 +175,19 @@ const SCREENS = [
       <div class="abs hdr">CAMP SHOWER</div>
       <div class="abs sub" style="top:38px">HOWDY</div>
       <div class="abs title" style="top:56px">COLTON</div>
-      <div class="abs sub" style="top:104px">10.0 gallons allowed</div>
+      <div class="abs sub" style="top:104px">41.2 gallons used so far</div>
       <div class="abs cta" style="bottom:22px">PRESS BUTTON TO START WATER</div>` },
   { key:'active', label:'3 · Showering', html: `
       <div class="abs hdr">COLTON · 04:12</div>
-      <div class="abs huge" style="top:40px">3.42<small>GAL</small></div>
-      <div class="bar" style="top:126px"><i style="width:34%"></i></div>
-      <div class="abs sub" style="top:146px">6.6 gal left · water on</div>
-      <div class="abs cta stop" style="bottom:22px">PRESS BUTTON WHEN DONE</div>` },
-  { key:'warn', label:'3b · Showering — running low', html: `
-      <div class="abs hdr">COLTON · 11:48</div>
-      <div class="abs huge" style="top:40px">9.10<small>GAL</small></div>
-      <div class="bar warn" style="top:126px"><i style="width:91%"></i></div>
-      <div class="abs sub warn-txt" style="top:146px">0.9 GAL LEFT — WRAP IT UP</div>
+      <div class="abs huge" style="top:52px">3.42<small>GAL</small></div>
+      <div class="abs sub" style="top:140px">used this shower</div>
       <div class="abs cta stop" style="bottom:22px">PRESS BUTTON WHEN DONE</div>` },
   { key:'summary', label:'4 · Summary (10 s)', html: `
       <div class="abs hdr">CAMP SHOWER</div>
       <div class="abs title" style="top:34px">ALL DONE!</div>
-      <div class="ticket"><div class="abs n" style="position:static">3.4<small> GAL</small></div><div class="t">6 MIN 40 SEC</div></div>
+      <div class="ticket"><div class="n">3.4<small> GAL</small></div><div class="t">44.6 GAL TOTAL</div></div>
       <div class="abs huge no-ticket" style="top:70px;font-size:56px">3.4<small>GAL</small></div>
-      <div class="abs sub no-ticket" style="top:134px">6 min 40 sec · see ya, Colton</div>
+      <div class="abs sub no-ticket" style="top:134px">this shower · 44.6 gal total</div>
       <div class="abs cta" style="bottom:22px">THANKS FOR SHOWERING</div>` },
   { key:'denied', label:'5 · Denied', html: `
       <div class="abs hdr">CAMP SHOWER</div>
