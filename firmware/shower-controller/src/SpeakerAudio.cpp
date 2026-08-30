@@ -22,6 +22,24 @@ void ShowerA2DPSource::bt_app_gap_callback(esp_bt_gap_cb_event_t event,
   BluetoothA2DPSource::bt_app_gap_callback(event, param);
 }
 
+void ShowerA2DPSource::bt_av_hdl_avrc_ct_evt(uint16_t event, void* param) {
+#ifdef ESP_IDF_4
+  auto* rc = static_cast<esp_avrc_ct_cb_param_t*>(param);
+  if (event == ESP_AVRC_CT_GET_RN_CAPABILITIES_RSP_EVT) {
+    // Speaker volume is controlled by its physical buttons. Remove volume
+    // notifications before the upstream source sees the capabilities so it
+    // neither subscribes to them nor sends its automatic volume+5 response.
+    esp_avrc_rn_evt_bit_mask_operation(
+        ESP_AVRC_BIT_MASK_OP_CLEAR, &rc->get_rn_caps_rsp.evt_set,
+        ESP_AVRC_RN_VOLUME_CHANGE);
+  } else if (event == ESP_AVRC_CT_CHANGE_NOTIFY_EVT &&
+             rc->change_ntf.event_id == ESP_AVRC_RN_VOLUME_CHANGE) {
+    return;
+  }
+#endif
+  BluetoothA2DPSource::bt_av_hdl_avrc_ct_evt(event, param);
+}
+
 bool ShowerA2DPSource::resumeDiscovery() {
   if (!discoveryHeldNow_) return false;
   discoveryHeldNow_ = false;

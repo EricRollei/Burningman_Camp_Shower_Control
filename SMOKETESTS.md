@@ -12,6 +12,11 @@ One pass through this list before the burn. Check items off as they pass.
       dropouts. Check the station page's **Controller health** card (or
       serial `[AUDIO] song finished ... underruns=N`) — a few underruns right at song start are
       fine; a steadily climbing count during playback is a fail.
+- [ ] **Speaker volume independence:** with source volume at 100%, confirm the
+      test tone and a song play at full source level. Press the speaker's
+      volume-down and volume-up buttons and confirm they change only the
+      speaker's own output; the dashboard source-volume value must not change
+      and serial must not report an automatic absolute-volume command.
 - [ ] **Song switching:** twist the music knob between several channels
       mid-song, including back to quiet (position 0). Each switch should be
       clean — no garbled audio, no crash.

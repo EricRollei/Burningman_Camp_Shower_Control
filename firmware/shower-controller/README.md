@@ -261,9 +261,13 @@ starts it in a particular state, `--local N` pretends to be another station).
 - `/PULSETOT.CSV` snapshots per-tag totals at each session end so boot replays
   only the tail of `/PULSES.CSV` rather than the whole week's log.
 
-The Shower speaker card provides a 0-100% volume control. Applying a new value
-changes the Bluetooth audio level immediately and saves it in `/SETTINGS.CSV`,
-so the same level is restored after a restart or speaker reconnection.
+The Shower speaker card provides a 0-100% source-level control, which defaults
+to full-scale PCM. Applying a new value changes the Bluetooth audio level
+immediately and saves it in `/SETTINGS.CSV`, so the same level is restored
+after a restart or speaker reconnection. The speaker's physical volume buttons
+remain local to the speaker; the controller does not subscribe or react to
+their AVRCP volume notifications. On first boot after this update, the old 43%
+default is migrated to 100%; any other saved source-level choice is preserved.
 
 Calibration starts the configured pump relay and counts raw pulses while water
 is dispensed into a known-volume container. Enter the measured gallons and

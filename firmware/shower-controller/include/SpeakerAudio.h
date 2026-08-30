@@ -18,6 +18,7 @@ class ShowerA2DPSource : public BluetoothA2DPSource {
  protected:
   void bt_app_gap_callback(esp_bt_gap_cb_event_t event,
                            esp_bt_gap_cb_param_t* param) override;
+  void bt_av_hdl_avrc_ct_evt(uint16_t event, void* param) override;
 
  private:
   volatile bool discoveryHold_ = false;
