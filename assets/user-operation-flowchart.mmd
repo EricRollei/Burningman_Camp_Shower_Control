@@ -43,7 +43,7 @@ flowchart TD
     BackIdle1 --> Idle
 
     %% ===================== Outside door sign =====================
-    subgraph DoorSign["Outside door sign — NanoC6 + OLED (updates ~2x/sec)"]
+    subgraph DoorSign["Outside door sign — NanoC6 + OLED (status every ~2 sec + on change)"]
         direction TB
         SignOpen["'OPEN' header, white background\nrotates a tagline every few seconds:\nHEY STINKY → SHOWER TIME → SCRUB A DUB →\nGET FRESH → SOAP AWAITS"]
         SignInUse["'IN USE'\nwhite text on black background"]

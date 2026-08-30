@@ -110,7 +110,7 @@ struct Header {
   uint16_t seq;
 };
 
-// Sent by every Tough twice per second and immediately on change. Door signs
+// Sent by every Tough every two seconds and immediately on change. Door signs
 // filter on stationId and role.
 struct StatusPacket {
   Header header;

@@ -43,7 +43,7 @@ What travels over the link (`firmware/shared/CampNetProtocol.h`):
 
 | Packet | From every Tough | Purpose |
 |---|---|---|
-| `STATUS` | every 500 ms + on change | `OPEN` / `IN_USE` / `UNAVAILABLE` for the door signs |
+| `STATUS` | every 2 s + on change | `OPEN` / `IN_USE` / `UNAVAILABLE` for the door signs |
 | `USAGE` | every 10 s + right after a session ends | this station's per-wristband totals (from `/SESSIONS.CSV`) |
 | `MEMBERS` | every 30 s + right after an edit | the whole member registry with a version number |
 | `LIMITS` | every 30 s + right after an edit | per-role gallon and minute limits with a version number |
@@ -106,7 +106,7 @@ relay or changes a session.
 
 The NanoC6 and external OLED form the public availability sign of each shower.
 The Nano listens on CampNet for `STATUS` broadcasts from its own shower's
-station id (twice per second). While available, the OLED uses an inverted
+station id (every two seconds). While available, the OLED uses an inverted
 bright background and rotates through short messages such as `HEY STINKY`,
 `SHOWER TIME`, and `SCRUB A DUB`. During an authorized shower session it
 displays `IN USE`, even when the pump is paused. It fails safe to `OFFLINE`

@@ -97,7 +97,7 @@ One pass through this list before the burn. Check items off as they pass.
       `S1` / `S2` in the corner matching the shower it is mounted on.
 - [ ] **Door sign tracks its own shower only:** start a session on Shower 1 —
       door 1 flips to IN USE within a second, door 2 stays OPEN. Power off
-      Shower 1's Tough — door 1 shows OFFLINE within 3 s.
+      Shower 1's Tough — door 1 shows OFFLINE within 11 s.
 - [ ] **Peers visible:** every Tough's screen header shows `READY - 3 NET`
       with all four powered; the admin home screen shows a tile for each of
       the other three and Camp settings lists them as online.

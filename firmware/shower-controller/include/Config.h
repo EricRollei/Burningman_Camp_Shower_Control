@@ -158,7 +158,7 @@ constexpr uint32_t MAX_CALIBRATION_MS = 10UL * 60UL * 1000UL;
 // periodic idempotent snapshots so lost frames self-heal.
 constexpr char NET_USAGE_PATH[] = "/NETUSAGE.CSV";
 constexpr char MEMBER_VERSION_PATH[] = "/MEMBERS.VER";
-constexpr uint32_t NET_STATUS_INTERVAL_MS = 500;
+constexpr uint32_t NET_STATUS_INTERVAL_MS = 2000;
 // USAGE/MEMBERS/LIMITS/AUTH periodic resends are skipped while every online
 // peer already holds the same version/content; NET_USAGE_REFRESH_MS is the
 // unconditional fallback so a lost usage chunk still heals.
