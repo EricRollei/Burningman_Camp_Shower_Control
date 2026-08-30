@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Camp Shower — Admin page layout explorations</title>
+<style>
+  /* ------------------------------------------------------------------ doc page */
+  body { margin:0; background:#151515; color:#ddd; font-family: Inter, system-ui, sans-serif; }
+  .page { max-width: 1500px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 28px; margin: 0 0 6px; color:#fff; }
+  h2 { font-size: 22px; margin: 56px 0 4px; color:#fff; }
+  .lead { color:#aaa; margin: 0 0 8px; max-width: 900px; line-height: 1.45; }
+  .row { display:flex; flex-wrap:wrap; gap: 28px 24px; align-items:flex-start; margin-top: 18px; }
+  .cell { display:flex; flex-direction:column; gap: 8px; }
+  .cell .label { font-size: 12px; color:#999; letter-spacing: .08em; text-transform: uppercase; }
+  .notes { background:#1e1e1e; border:1px solid #2c2c2c; border-radius: 10px; padding: 16px 20px; margin-top: 18px; max-width: 900px; line-height:1.5; font-size: 14px; }
+  .notes h3 { margin: 0 0 6px; font-size: 15px; color:#fff; }
+  .notes ul { margin: 6px 0 0 18px; padding:0; }
+  .notes li { margin: 3px 0; }
+  code { background:#2a2a2a; padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  table.cmp { border-collapse: collapse; font-size: 14px; margin-top: 14px; max-width: 900px; }
+  table.cmp th, table.cmp td { text-align:left; padding: 8px 12px; border-bottom: 1px solid #2c2c2c; vertical-align: top; }
+  table.cmp th { color:#fff; }
+  table.cmp td:first-child { color:#fff; white-space: nowrap; }
+  .good { color:#7fe0a8; } .meh { color:#ffd166; } .bad { color:#ff8a80; }
+
+  /* --------------------------------------------------------------- phone frame */
+  .phone { width: 390px; height: 780px; overflow: auto; border-radius: 30px; box-shadow: 0 0 0 8px #000, 0 0 0 9px #333, 0 30px 60px #0008; scrollbar-width: thin; }
+  .phone.wide { width: 900px; height: 640px; border-radius: 12px; }
+  .phone * { box-sizing: border-box; }
+  .phone button { font: inherit; cursor: pointer; }
+  .phone input { font: inherit; }
+
+  /* ================================================ shared dark admin styling */
+  .adm { min-height: 100%; font: 15px/1.35 system-ui, sans-serif; color:#fff9ea; background:#071817; }
+  .adm .top { position: sticky; top:0; z-index:5; background:linear-gradient(#0f2f2b,#0b2421); border-bottom:1px solid #245047; padding: 14px 16px 10px; }
+  .adm .eyebrow { color:#53e0a6; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .13em; }
+  .adm .ttl { font-size: 22px; font-weight: 900; line-height: 1.1; margin: 2px 0 8px; }
+  .adm .banner { display:flex; align-items:center; gap: 10px; padding: 9px 12px; border-radius: 9px; background:#0d2522; border-left: 4px solid #53e0a6; font-weight: 700; font-size: 14px; }
+  .adm .banner.warn { border-left-color:#ffc85b; background:#2b2410; }
+  .adm .banner .pulse { width:10px; height:10px; border-radius:50%; background:#53e0a6; box-shadow: 0 0 0 4px #53e0a633; flex:none; }
+  .adm .banner.warn .pulse { background:#ffc85b; box-shadow: 0 0 0 4px #ffc85b33; }
+  .adm .health { display:flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
+  .adm .pill { display:inline-flex; align-items:center; gap: 5px; font-size: 11.5px; font-weight: 700; padding: 3px 8px 3px 6px; border-radius: 999px; background:#123531; color:#a8c2bc; border:1px solid #245047; }
+  .adm .pill i { width:7px; height:7px; border-radius:50%; background:#53e0a6; display:inline-block; }
+  .adm .pill.down { border-color:#ff756c88; color:#ffb1aa; } .adm .pill.down i { background:#ff756c; }
+  .adm .pill.dim { color:#7f9791; } .adm .pill.dim i { background:#4d6b65; }
+  .adm .tabs { display:flex; gap: 4px; margin-top: 10px; background:#071b19; border-radius: 10px; padding: 3px; }
+  .adm .tabs button { flex:1; border:0; border-radius: 8px; padding: 8px 4px; background:transparent; color:#a8c2bc; font-weight: 800; font-size: 13px; }
+  .adm .tabs button.on { background:#53e0a6; color:#052019; }
+  .adm .body { padding: 14px 16px 30px; }
+  .adm .card { background:linear-gradient(145deg,#153632,#102b28); border:1px solid #245047; border-radius: 16px; padding: 14px; margin: 0 0 12px; }
+  .adm h3 { margin: 0 0 8px; font-size: 15px; font-weight: 900; display:flex; justify-content:space-between; align-items:baseline; }
+  .adm h3 small { color:#a8c2bc; font-weight: 600; font-size: 12px; }
+  .adm .muted { color:#a8c2bc; font-size: 12.5px; }
+  .adm .tiles { display:grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+  .adm .tiles.four { grid-template-columns: repeat(4, 1fr); }
+  .adm .tile { background:#0d2522; border:1px solid #245047; border-radius: 12px; padding: 10px 12px; }
+  .adm .tile .n { font-size: 24px; font-weight: 900; color:#53e0a6; line-height:1; }
+  .adm .tile .n small { font-size: 12px; color:#a8c2bc; margin-left: 3px; font-weight: 700; }
+  .adm .tile .l { font-size: 11.5px; color:#a8c2bc; margin-top: 4px; font-weight: 600; }
+  .adm .field { display:flex; gap: 8px; }
+  .adm input[type=text], .adm input[type=number], .adm input[type=password] { flex:1; min-width:0; padding: 10px 11px; border:1px solid #52766f; border-radius: 9px; background:#071b19; color:#fff9ea; }
+  .adm .btn { border:0; border-radius: 9px; padding: 10px 13px; background:#53e0a6; color:#052019; font-weight: 800; font-size: 13.5px; white-space: nowrap; }
+  .adm .btn.sec { background:#31524c; color:#fff9ea; }
+  .adm .btn.ghost { background:transparent; color:#a8c2bc; border:1px solid #31534d; }
+  .adm .btn.dng { background:transparent; color:#ff756c; border:1px solid #ff756c; }
+  .adm .btn.sm { padding: 6px 10px; font-size: 12.5px; }
+  .adm .btn[disabled] { opacity:.4; }
+  .adm .acts { display:flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .adm .mem { display:flex; align-items:center; gap: 10px; padding: 10px 0; border-top:1px solid #31534d; }
+  .adm .mem:first-of-type { border-top:0; }
+  .adm .mem .av { width: 34px; height: 34px; border-radius: 50%; background:#245047; color:#53e0a6; font-weight: 900; display:flex; align-items:center; justify-content:center; flex:none; font-size: 14px; }
+  .adm .mem .av.off { background:#2b2410; color:#ffc85b; }
+  .adm .mem .who { flex:1; min-width:0; }
+  .adm .mem .who b { display:block; font-size: 15px; }
+  .adm .mem .who span { font-size: 12px; color:#a8c2bc; }
+  .adm .mem .use { text-align:right; }
+  .adm .mem .use b { display:block; color:#53e0a6; font-size: 15px; }
+  .adm .mem .use span { font-size: 11.5px; color:#a8c2bc; }
+  .adm .chev { color:#52766f; font-size: 18px; }
+  .adm .editor { background:#0d2522; border:1px solid #245047; border-radius: 12px; padding: 12px; margin: 0 0 10px; }
+  .adm .editor label { display:block; font-size: 12px; font-weight: 700; color:#a8c2bc; margin: 8px 0 4px; }
+  .adm .editor label:first-child { margin-top: 0; }
+  .adm .sw { display:flex; align-items:center; justify-content:space-between; padding: 8px 0; }
+  .adm .tog { width: 42px; height: 24px; border-radius: 12px; background:#53e0a6; position:relative; flex:none; }
+  .adm .tog::after { content:""; position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; background:#052019; }
+  .adm .tog.off { background:#31524c; } .adm .tog.off::after { right:auto; left:3px; background:#a8c2bc; }
+  .adm table { width:100%; border-collapse: collapse; font-size: 13px; }
+  .adm td, .adm th { text-align:left; padding: 7px 4px; border-bottom: 1px solid #31534d; }
+  .adm th { color:#a8c2bc; font-size: 11.5px; text-transform: uppercase; letter-spacing:.06em; }
+  .adm td.r, .adm th.r { text-align:right; }
+  .adm .tag { display:inline-block; font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 999px; background:#245047; color:#c9e5dd; }
+  .adm .tag.warn { background:#3a2f0f; color:#ffc85b; } .adm .tag.bad { background:#3a1512; color:#ff9a92; }
+  .adm .steps { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color:#c9e5dd; }
+  .adm .steps li { margin: 3px 0; }
+  .adm .range { width:100%; accent-color:#53e0a6; margin: 6px 0; }
+  .adm .kv { display:grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+  .adm .kv span:nth-child(odd) { color:#a8c2bc; }
+  .adm .knob { display:flex; gap: 5px; margin: 8px 0 4px; }
+  .adm .knob i { flex:1; height: 8px; border-radius: 4px; background:#245047; }
+  .adm .knob i.on { background:#53e0a6; box-shadow: 0 0 0 2px #53e0a655; }
+  .adm .knob i.none { background:#1a3330; border:1px dashed #52766f; }
+  .adm details { border:1px solid #245047; border-radius: 16px; background:linear-gradient(145deg,#153632,#102b28); margin: 0 0 10px; }
+  .adm details > summary { list-style:none; cursor:pointer; padding: 13px 14px; display:flex; align-items:center; gap: 10px; }
+  .adm details > summary::-webkit-details-marker { display:none; }
+  .adm summary .t { font-weight: 900; font-size: 15px; flex:1; }
+  .adm summary .s { color:#a8c2bc; font-size: 12.5px; text-align:right; }
+  .adm summary .arr { color:#52766f; transition: transform .15s; }
+  .adm details[open] summary .arr { transform: rotate(90deg); }
+  .adm details .in { padding: 0 14px 14px; border-top: 1px solid #245047; padding-top: 12px; }
+  .adm .primary-row { display:flex; gap: 8px; margin-top: 10px; }
+  .adm .primary-row .btn { flex:1; padding: 12px; font-size: 14px; }
+
+  /* wide (desktop) variant: two-column body */
+  .wide .adm .body { display:grid; grid-template-columns: 1.15fr 1fr; gap: 14px; padding: 16px 20px; align-items:start; }
+  .wide .adm .body > .col { min-width:0; }
+  .wide .adm .tiles.four { grid-template-columns: repeat(4,1fr); }
+
+  /* ===================================================== C · light "app" look */
+  .app { min-height:100%; font: 15px/1.35 system-ui, sans-serif; color:#1b2a28; background:#f3efe4; }
+  .app * { box-sizing: border-box; }
+  .app .top { position: sticky; top:0; z-index:5; background:#0f6b5c; color:#fff; padding: 14px 16px 12px; border-radius: 0 0 22px 22px; box-shadow: 0 8px 24px #0f6b5c44; }
+  .app .top .row1 { display:flex; align-items:center; justify-content:space-between; }
+  .app .top .eyebrow { font-size: 11px; font-weight: 800; letter-spacing:.13em; text-transform: uppercase; color:#b6f0dc; }
+  .app .top .ttl { font-size: 24px; font-weight: 900; line-height:1.05; }
+  .app .top .back { background:#ffffff22; border:0; color:#fff; border-radius: 999px; padding: 6px 12px; font-weight: 800; font-size: 13px; }
+  .app .live { margin-top: 12px; background:#0b5447; border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; gap: 10px; font-weight: 700; font-size: 14px; }
+  .app .live .pulse { width:10px; height:10px; border-radius:50%; background:#5ef0b4; box-shadow: 0 0 0 4px #5ef0b433; flex:none; }
+  .app .live.warn { background:#7a4d00; } .app .live.warn .pulse { background:#ffd166; box-shadow: 0 0 0 4px #ffd16633; }
+  .app .live small { display:block; font-weight: 600; color:#b6f0dc; font-size: 12px; }
+  .app .body { padding: 16px; }
+  .app .cta { width:100%; border:0; border-radius: 14px; padding: 15px; font-size: 16px; font-weight: 900; background:#f28c28; color:#2b1600; box-shadow: 0 6px 0 #b8621a; margin-bottom: 16px; }
+  .app .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .app .tile { background:#fff; border-radius: 18px; padding: 14px 14px 12px; min-height: 118px; box-shadow: 0 2px 0 #e2dccb, 0 10px 24px #0000000d; display:flex; flex-direction:column; justify-content:space-between; cursor:pointer; border: 2px solid transparent; }
+  .app .tile:hover { border-color:#0f6b5c; }
+  .app .tile .ic { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; color:#6b7c78; }
+  .app .tile .n { font-size: 28px; font-weight: 900; color:#0f6b5c; line-height:1; margin-top: 8px; }
+  .app .tile .n small { font-size: 13px; color:#6b7c78; margin-left: 3px; font-weight: 700; }
+  .app .tile .n.txt { font-size: 18px; }
+  .app .tile .l { font-size: 12px; color:#6b7c78; font-weight: 700; margin-top: 4px; }
+  .app .tile .l b { color:#1b2a28; }
+  .app .tile.warn .n { color:#b8621a; }
+  .app .tile .dots { display:flex; gap: 4px; margin-top: 8px; }
+  .app .tile .dots i { width: 9px; height: 9px; border-radius:50%; background:#5ec89f; }
+  .app .tile .dots i.bad { background:#e0493f; }
+  .app .card { background:#fff; border-radius: 18px; padding: 14px; box-shadow: 0 2px 0 #e2dccb, 0 10px 24px #0000000d; margin-bottom: 12px; }
+  .app h3 { margin: 0 0 8px; font-size: 15px; font-weight: 900; display:flex; justify-content:space-between; align-items:baseline; }
+  .app h3 small { color:#6b7c78; font-weight: 600; font-size: 12px; }
+  .app .muted { color:#6b7c78; font-size: 12.5px; }
+  .app .field { display:flex; gap: 8px; }
+  .app input[type=text], .app input[type=number] { flex:1; min-width:0; padding: 10px 11px; border:1.5px solid #cfd8d5; border-radius: 10px; background:#fbfaf6; color:#1b2a28; }
+  .app .btn { border:0; border-radius: 10px; padding: 10px 13px; background:#0f6b5c; color:#fff; font-weight: 800; font-size: 13.5px; white-space: nowrap; }
+  .app .btn.sec { background:#e7efec; color:#0f6b5c; }
+  .app .btn.dng { background:#fde8e6; color:#c0392b; }
+  .app .btn.sm { padding: 6px 10px; font-size: 12.5px; }
+  .app .btn[disabled] { opacity:.4; }
+  .app .acts { display:flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .app .mem { display:flex; align-items:center; gap: 10px; padding: 10px 0; border-top:1px solid #eee8d9; }
+  .app .mem:first-of-type { border-top:0; }
+  .app .mem .av { width: 34px; height: 34px; border-radius: 50%; background:#dff3ec; color:#0f6b5c; font-weight: 900; display:flex; align-items:center; justify-content:center; flex:none; font-size: 14px; }
+  .app .mem .av.off { background:#fff1dc; color:#b8621a; }
+  .app .mem .who { flex:1; min-width:0; } .app .mem .who b { display:block; } .app .mem .who span { font-size: 12px; color:#6b7c78; }
+  .app .mem .use { text-align:right; } .app .mem .use b { display:block; color:#0f6b5c; } .app .mem .use span { font-size: 11.5px; color:#6b7c78; }
+  .app .chev { color:#b9c4c1; font-size: 18px; }
+  .app .editor { background:#f6f9f8; border:1.5px solid #cfe3dd; border-radius: 12px; padding: 12px; margin: 0 0 10px; }
+  .app .editor label { display:block; font-size: 12px; font-weight: 700; color:#6b7c78; margin: 8px 0 4px; }
+  .app .editor label:first-child { margin-top:0; }
+  .app .sw { display:flex; align-items:center; justify-content:space-between; padding: 8px 0; }
+  .app .tog { width: 42px; height: 24px; border-radius: 12px; background:#0f6b5c; position:relative; flex:none; }
+  .app .tog::after { content:""; position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; background:#fff; }
+  .app .tog.off { background:#cfd8d5; } .app .tog.off::after { right:auto; left:3px; }
+  .app .range { width:100%; accent-color:#0f6b5c; margin: 6px 0; }
+  .app .kv { display:grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+  .app .kv span:nth-child(odd) { color:#6b7c78; }
+  .app .seg { display:flex; gap:6px; margin: 8px 0 4px; }
+  .app .seg i { flex:1; height: 10px; border-radius: 5px; background:#e2dccb; }
+  .app .seg i.on { background:#0f6b5c; }
+  .app .tag { display:inline-block; font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 999px; background:#e7efec; color:#0f6b5c; }
+  .app .tag.warn { background:#fff1dc; color:#b8621a; } .app .tag.bad { background:#fde8e6; color:#c0392b; }
+  .app table { width:100%; border-collapse: collapse; font-size: 13px; }
+  .app td, .app th { text-align:left; padding: 7px 4px; border-bottom: 1px solid #eee8d9; }
+  .app th { color:#6b7c78; font-size: 11.5px; text-transform: uppercase; letter-spacing:.06em; }
+  .app td.r, .app th.r { text-align:right; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Camp Shower — Admin page layout explorations</h1>
+  <p class="lead">Three ways to re-organize the phone-hosted admin dashboard served from the Tough at <code>/</code>. Each phone below is scrollable and lightly interactive (tabs, accordions, tiles) so you can feel how much scrolling each layout actually needs. All three use the same fake data: 14 members, 58 showers, 412.6 gal total.</p>
+
+  <div class="notes">
+    <h3>What's hard about the current page</h3>
+    <ul>
+      <li><b>Ten equal-weight cards in one column.</b> Enrolling a wristband (the most common job) sits next to "change password" (done once). Reaching "Recent showers" or "Reboot" means scrolling past the speaker and knob sections every time.</li>
+      <li><b>Health is one run-on sentence</b> ("Uptime 192 min · heap 118k free (low-water 96k) · WiFi clients 1 · hub ok · relay ok · …"). You have to read the whole line to find the thing that's DOWN.</li>
+      <li><b>Member editing uses three browser <code>prompt()</code>/<code>confirm()</code> dialogs</b> in a row (name → limit → enabled). Easy to mis-tap, no way to see the current value while typing, and iOS Safari renders them badly.</li>
+      <li><b>No "what's happening right now."</b> The status banner is text-only; there's no glanceable live state (showering / enrolling / idle) or total-gallons hero number.</li>
+      <li><b>Per-member gallons vs. limit</b> is only shown as the button label "Edit · 10.0 gal limit".</li>
+    </ul>
+    <h3 style="margin-top:14px">Fixes shared by all three layouts</h3>
+    <ul>
+      <li>A <b>sticky header</b> with the live status banner and a row of <b>health pills</b> (Hub · Relay · RFID · SD · Speaker · uptime) — green dot / red dot, so a fault is visible from anywhere on the page.</li>
+      <li><b>Inline member editor</b>: tap a member row, it expands to name / limit / enabled toggle / Save / Delete. No browser dialogs.</li>
+      <li>Members show <b>avatar initial, gallons, shower count, and limit chip</b>; disabled members get an amber avatar instead of a "disabled" word.</li>
+      <li>Recent showers use <b>end-reason chips</b> (BUTTON / LIMIT / TIMEOUT / HANDOFF / REBOOT) with color so limit hits and timeouts jump out.</li>
+      <li>Still a single PROGMEM string, no external fonts or assets, ~same JS size — the same <code>/api/overview</code> poll drives everything.</li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ A -->
+  <h2>A · Tabbed command center</h2>
+  <p class="lead">One sticky header (status + health) and four tabs: <b>Members · Showers · Station · Audio</b>. Each tab is roughly one phone screen tall, so there's essentially no scrolling. The first tab is the one you use most. Same dark teal palette as today, just tightened up.</p>
+  <div class="row" id="rowA"></div>
+  <div class="notes">
+    <h3>Trade-offs</h3>
+    <ul>
+      <li class="good">Zero-scroll for the common tasks; each tab is a focused workspace.</li>
+      <li class="good">Health pills in the header mean you never lose the station's state while on the Audio tab.</li>
+      <li class="meh">Info in other tabs is hidden — you can't see "last shower" while enrolling. The header banner mitigates this for live state.</li>
+      <li class="meh">Needs ~15 lines of JS for tab switching (trivial, but it's new code on the ESP32 page).</li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ B -->
+  <h2>B · Overview + fold-out sections</h2>
+  <p class="lead">Still one page, but ordered by how often you use it and with <b>progressive disclosure</b>. Stat tiles and the members list are always open; calibration, audio, knob, controller, and password are collapsed <code>&lt;details&gt;</code> rows whose <em>summary line shows their live state</em> ("Speaker — connected · idle · 60 %"). So everything is glanceable without scrolling, and controls appear only when you open them. Native HTML, no JS routing.</p>
+  <div class="row" id="rowB"></div>
+  <div class="notes">
+    <h3>Trade-offs</h3>
+    <ul>
+      <li class="good">Everything visible at a glance in ~1.5 screens; the accordions collapse 60 % of today's page height.</li>
+      <li class="good">Smallest change to the firmware: same DOM structure, wrapped in <code>&lt;details&gt;</code>, plus the tiles and inline editor.</li>
+      <li class="good">Scales to a laptop nicely as a two-column grid (wide frame above).</li>
+      <li class="meh">Members list still grows with camp size; at 30+ members it will need a search box or "show all" fold.</li>
+      <li class="meh">Open accordions push content below them down — fine on a phone, slightly jumpy.</li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ C -->
+  <h2>C · Home screen + focused sub-pages (light "daylight" look)</h2>
+  <p class="lead">Treats the admin page like a small phone app. A <b>home screen</b> shows one big "Enroll wristband" button (the #1 task) and six tiles that are both <em>status readouts</em> and <em>navigation</em> — tap Water to get the showers log, tap Speaker to get the audio controls. Also explores a cream/teal/orange light theme, which is far easier to read on a phone in playa daylight than the dark green.</p>
+  <div class="row" id="rowC"></div>
+  <div class="notes">
+    <h3>Trade-offs</h3>
+    <ul>
+      <li class="good">Home screen never scrolls; every number that matters fits above the fold. Sub-pages are single-purpose and short.</li>
+      <li class="good">Light theme is the most legible outdoors; the orange CTA is unmissable.</li>
+      <li class="bad">Two taps for anything that isn't enrolling. Calibration and knob setup involve going back and forth to check readings (the sub-page shows live values, so this is mostly fine).</li>
+      <li class="meh">Slightly more JS (view switching + back button) and a bigger CSS block — still a few KB, fine for PROGMEM.</li>
+      <li class="meh">Light theme at night on a phone is bright; could honor <code>prefers-color-scheme</code> and ship both.</li>
+    </ul>
+  </div>
+
+  <!-- ============================================================ compare -->
+  <h2>Side by side</h2>
+  <table class="cmp">
+    <tr><th></th><th>A · Tabs</th><th>B · Overview + folds</th><th>C · Home + sub-pages</th></tr>
+    <tr><td>Scrolling to enroll</td><td class="good">none</td><td class="good">none</td><td class="good">none</td></tr>
+    <tr><td>Scrolling to see last shower</td><td class="good">tap tab</td><td class="good">none (tile) / tap fold for table</td><td class="meh">tap Water tile</td></tr>
+    <tr><td>Everything glanceable on one screen</td><td class="meh">header only</td><td class="good">yes (summaries)</td><td class="good">yes (tiles)</td></tr>
+    <tr><td>Fault visible everywhere</td><td class="good">header pills</td><td class="good">header pills</td><td class="good">header + Health tile</td></tr>
+    <tr><td>Firmware change size</td><td class="meh">medium</td><td class="good">small</td><td class="meh">medium-large</td></tr>
+    <tr><td>Desktop/laptop</td><td class="meh">fine, narrow</td><td class="good">two-column grid</td><td class="meh">tiles get big</td></tr>
+    <tr><td>Daylight readability</td><td class="meh">dark</td><td class="meh">dark</td><td class="good">light</td></tr>
+  </table>
+
+  <div class="notes">
+    <h3>Recommendation</h3>
+    <p style="margin:0">Go with <b>B</b> as the structure — it fixes the scrolling and readability with the least new code and stays one page — and borrow the <b>light "daylight" palette from C</b> if you're often on the page mid-day (or ship both via <code>prefers-color-scheme</code>). If you find yourself wanting even less on screen, B upgrades to A cheaply: the fold-out sections become tabs and the header stays the same.</p>
+  </div>
+</div>
+
+<script>
+// ------------------------------------------------------------- fake data
+const MEMBERS = [
+  { n:'Colton',        g:41.2, s:6,  lim:10, on:true },
+  { n:'Dusty River',   g:38.7, s:5,  lim:10, on:true },
+  { n:'Sparkle',       g:3.1,  s:1,  lim:10, on:false },
+  { n:'Marisol',       g:29.9, s:4,  lim:8,  on:true },
+  { n:'Big Tex',       g:52.4, s:7,  lim:12, on:true },
+  { n:'Juniper',       g:19.0, s:3,  lim:10, on:true },
+  { n:'Rook',          g:0,    s:0,  lim:10, on:true },
+  { n:'Fern',          g:24.6, s:4,  lim:10, on:false },
+];
+const SESSIONS = [
+  ['Colton',  3.42, '4:12',  'BUTTON'],
+  ['Big Tex', 12.0, '11:48', 'LIMIT'],
+  ['Marisol', 2.10, '2:57',  'BUTTON'],
+  ['Juniper', 6.80, '20:00', 'TIMEOUT'],
+  ['Dusty River', 4.95, '5:40', 'HANDOFF'],
+  ['Fern',    1.25, '1:31',  'REBOOT'],
+  ['Colton',  5.10, '6:02',  'BUTTON'],
+];
+const reasonTag = r => `<span class="tag ${r==='LIMIT'||r==='HANDOFF'?'warn':(r==='TIMEOUT'||r==='REBOOT')?'bad':''}">${r}</span>`;
+
+const memberRows = (list, expanded=1) => list.map((m,i) => {
+  const row = `<div class="mem"><div class="av ${m.on?'':'off'}">${m.n[0]}</div>
+    <div class="who"><b>${m.n}</b><span>${m.on?`${m.lim} gal limit`:'disabled · '+m.lim+' gal limit'}</span></div>
+    <div class="use"><b>${m.g.toFixed(1)} gal</b><span>${m.s} shower${m.s===1?'':'s'}</span></div><span class="chev">›</span></div>`;
+  if (i !== expanded) return row;
+  return row + `<div class="editor">
+      <label>Name</label><input type="text" value="${m.n}">
+      <label>Per-shower limit (gallons)</label><input type="text" value="${m.lim}">
+      <div class="sw"><span><b>Can start showers</b><br><span class="muted">Off keeps history, blocks the wristband</span></span><span class="tog ${m.on?'':'off'}"></span></div>
+      <div class="muted" style="font-family:ui-monospace,monospace;font-size:11px">UID 04:A3:2F:9C:11:80</div>
+      <div class="acts"><button class="btn">Save</button><button class="btn sec">Cancel</button><span style="flex:1"></span><button class="btn dng sm">Delete</button></div>
+    </div>`;
+}).join('');
+
+const sessionTable = (n=SESSIONS.length) => `<table><thead><tr><th>Member</th><th class="r">Gal</th><th class="r">Time</th><th class="r">Ended</th></tr></thead><tbody>${
+  SESSIONS.slice(0,n).map(s=>`<tr><td>${s[0]}</td><td class="r">${s[1].toFixed(2)}</td><td class="r">${s[2]}</td><td class="r">${reasonTag(s[3])}</td></tr>`).join('')}</tbody></table>`;
+
+const healthPills = (down=null) => `<div class="health">
+  ${['Hub','Relay','RFID','SD','Speaker'].map(h=>`<span class="pill ${down===h?'down':''}"><i></i>${h}</span>`).join('')}
+  <span class="pill dim"><i></i>up 3h 12m · 1 client</span></div>`;
+
+const banner = (state) => state==='enroll'
+  ? `<div class="banner warn"><span class="pulse"></span>Waiting for Rook's wristband — tap it now</div>`
+  : state==='shower'
+  ? `<div class="banner"><span class="pulse"></span>Colton is showering · 2.1 gal · 2:40</div>`
+  : `<div class="banner"><span class="pulse"></span>Ready — tap a wristband to shower</div>`;
+
+// ------------------------------------------------------------- A · tabs
+const A_TABS = {
+  Members: `
+    <div class="card"><h3>Enroll a wristband <small>14 members</small></h3>
+      <div class="field"><input type="text" placeholder="Member name"><button class="btn">Enroll next tag</button></div>
+      <div class="muted" style="margin-top:6px">Type a name, press Enroll, then tap the new wristband on the reader.</div></div>
+    <div class="card"><h3>Members <small>tap to edit</small></h3>${memberRows(MEMBERS, 1)}</div>`,
+  Showers: `
+    <div class="tiles"><div class="tile"><div class="n">412.6<small>gal</small></div><div class="l">total water</div></div>
+      <div class="tile"><div class="n">58</div><div class="l">showers</div></div>
+      <div class="tile"><div class="n">7.1<small>gal</small></div><div class="l">avg per shower</div></div>
+      <div class="tile"><div class="n">4<small>hits</small></div><div class="l">limit / timeout</div></div></div>
+    <div class="card"><h3>Recent showers <small>last 20</small></h3>${sessionTable()}</div>`,
+  Station: `
+    <div class="card"><h3>Flow calibration <small>450.00 pulses / gal</small></h3>
+      <ol class="steps"><li>Put the shower head in a known-volume bucket</li><li>Start dispensing (pump runs, 2 min max)</li><li>Enter the measured gallons and stop</li></ol>
+      <div class="field" style="margin-top:10px"><input type="number" value="1.00"><span class="muted" style="align-self:center">gal</span></div>
+      <div class="acts"><button class="btn">Start dispensing</button><button class="btn sec" disabled>Stop &amp; save</button></div>
+      <div class="muted" style="margin-top:8px">Idle · 0 pulses</div></div>
+    <div class="card"><h3>Controller</h3>
+      <div class="kv"><span>Uptime</span><span>3 h 12 min</span><span>Heap</span><span>118 k free · low-water 96 k</span><span>PSRAM</span><span>3.9 MB free</span><span>Wi-Fi clients</span><span>1</span><span>Audio underruns</span><span>0</span></div>
+      <div class="acts"><button class="btn dng">Reboot controller</button></div>
+      <div class="muted" style="margin-top:8px">Reboot stops the pump first and records any open session.</div></div>
+    <div class="card"><h3>Admin password</h3><div class="field"><input type="password" value="••••••••••"><button class="btn sec">Update</button></div></div>`,
+  Audio: `
+    <div class="card"><h3>Speaker <small>Select 4 Go · connected</small></h3>
+      <div class="tiles"><div class="tile"><div class="n">60<small>%</small></div><div class="l">volume</div></div><div class="tile"><div class="n" style="font-size:16px;margin-top:4px">Idle</div><div class="l">playback · tracks ready</div></div></div>
+      <input class="range" type="range" min="0" max="100" value="60">
+      <div class="acts"><button class="btn">Test tone</button><button class="btn">Play ch. 1</button><button class="btn sec">Stop</button><button class="btn ghost">Find speaker</button></div>
+      <div class="acts"><button class="btn ghost sm">Replace channel 1 audio…</button></div></div>
+    <div class="card"><h3>Music knob <small>calibrated</small></h3>
+      <div class="tiles"><div class="tile"><div class="n">2</div><div class="l">Africa</div></div><div class="tile"><div class="n">1873</div><div class="l">raw / 4095</div></div></div>
+      <div class="knob">${[0,1,2,3,4,5,6,7,8,9].map(i=>`<i class="${i===2?'on':''}"></i>`).join('')}</div>
+      <div class="muted">0 Quiet · 1 Purple Rain · 2 Africa · 3 Whose Bed… · 4 It's My House · 5 Dancing Queen · 6 What a Feeling · 7 Footloose · 8 Maniac · 9 Hotrod</div>
+      <div class="acts"><button class="btn sec">Recalibrate knob</button></div></div>`,
+};
+function mountA(el, tab, state='idle') {
+  const tabs = Object.keys(A_TABS);
+  el.innerHTML = `<div class="adm"><div class="top"><div class="eyebrow">Local controller · secured</div><div class="ttl">Shower Admin</div>
+    ${banner(state)}${healthPills(state==='fault'?'Speaker':null)}
+    <div class="tabs">${tabs.map(t=>`<button class="${t===tab?'on':''}">${t}</button>`).join('')}</div></div>
+    <div class="body">${A_TABS[tab]}</div></div>`;
+  el.querySelectorAll('.tabs button').forEach(b => b.onclick = () => mountA(el, b.textContent, state));
+}
+
+// ------------------------------------------------------------- B · folds
+function bodyB(open) {
+  const tiles = `<div class="tiles four">
+    <div class="tile"><div class="n">412.6</div><div class="l">gal total</div></div>
+    <div class="tile"><div class="n">58</div><div class="l">showers</div></div>
+    <div class="tile"><div class="n">14</div><div class="l">members</div></div>
+    <div class="tile"><div class="n" style="font-size:16px;margin-top:5px;white-space:nowrap">3.4 gal</div><div class="l" style="white-space:nowrap">last · Colton</div></div></div>`;
+  const enroll = `<div class="card"><h3>Enroll a wristband</h3><div class="field"><input type="text" placeholder="Member name"><button class="btn">Enroll</button></div></div>`;
+  const members = `<div class="card"><h3>Members <small>tap to edit · 2 disabled</small></h3>${memberRows(MEMBERS.slice(0,6), open==='members'?1:-1)}<div class="acts"><button class="btn ghost sm">Show all 14</button></div></div>`;
+  const fold = (key, title, summary, inner) => `<details ${open===key?'open':''}><summary><span class="t">${title}</span><span class="s">${summary}</span><span class="arr">›</span></summary><div class="in">${inner}</div></details>`;
+  const folds = [
+    fold('showers','Recent showers','Big Tex hit limit 20 min ago', sessionTable(5)),
+    fold('cal','Flow calibration','450.00 pulses / gal', `<ol class="steps"><li>Shower head in a known-volume bucket</li><li>Start dispensing (2 min max)</li><li>Enter measured gallons, Stop &amp; save</li></ol><div class="field" style="margin-top:10px"><input type="number" value="1.00"><button class="btn">Start</button><button class="btn sec" disabled>Stop &amp; save</button></div>`),
+    fold('audio','Speaker','connected · idle · 60 %', `<input class="range" type="range" min="0" max="100" value="60"><div class="acts"><button class="btn">Test tone</button><button class="btn">Play ch. 1</button><button class="btn sec">Stop</button><button class="btn ghost">Find speaker</button></div><div class="acts"><button class="btn ghost sm">Replace channel 1 audio…</button></div>`),
+    fold('knob','Music knob','2 · Africa · calibrated', `<div class="knob">${[0,1,2,3,4,5,6,7,8,9].map(i=>`<i class="${i===2?'on':''}"></i>`).join('')}</div><div class="muted">raw 1873 / 4095</div><div class="acts"><button class="btn sec">Recalibrate knob</button></div>`),
+    fold('ctl','Controller','up 3 h 12 m · heap 118 k · 1 client', `<div class="kv"><span>Heap</span><span>118 k free · low-water 96 k</span><span>PSRAM</span><span>3.9 MB free</span><span>Audio underruns</span><span>0</span></div><div class="acts"><button class="btn dng">Reboot controller</button></div>`),
+    fold('pw','Admin password','', `<div class="field"><input type="password" value="••••••••••"><button class="btn sec">Update</button></div>`),
+  ];
+  return { tiles, enroll, members, folds };
+}
+function mountB(el, open='members', state='idle', wide=false) {
+  const b = bodyB(open);
+  const head = `<div class="top"><div class="eyebrow">Local controller · secured</div><div class="ttl">Shower Admin</div>${banner(state)}${healthPills(state==='fault'?'SD':null)}</div>`;
+  el.innerHTML = wide
+    ? `<div class="adm">${head}<div class="body"><div class="col">${b.tiles}${b.enroll}${b.members}</div><div class="col">${b.folds.join('')}</div></div></div>`
+    : `<div class="adm">${head}<div class="body">${b.tiles}${b.enroll}${b.members}${b.folds.join('')}</div></div>`;
+}
+
+// ------------------------------------------------------------- C · app
+const C_VIEWS = {
+  home: `
+    <button class="cta">＋ Enroll a wristband</button>
+    <div class="grid">
+      <div class="tile" data-go="members"><div class="ic">MEMBERS</div><div><div class="n">14</div><div class="l">members · <b>2 disabled</b></div></div></div>
+      <div class="tile" data-go="water"><div class="ic">WATER</div><div><div class="n">412.6<small>gal</small></div><div class="l">58 showers · last <b>3.4 gal</b></div></div></div>
+      <div class="tile" data-go="audio"><div class="ic">SPEAKER</div><div><div class="n txt">Connected</div><div class="l">60 % · idle · tracks ready</div></div></div>
+      <div class="tile" data-go="audio"><div class="ic">MUSIC KNOB</div><div><div class="n txt">2 · Africa</div><div class="l">knob calibrated</div></div></div>
+      <div class="tile" data-go="station"><div class="ic">HEALTH</div><div><div class="n txt">All OK</div><div class="dots"><i></i><i></i><i></i><i></i><i></i></div><div class="l">up 3 h 12 m · 1 client</div></div></div>
+      <div class="tile" data-go="station"><div class="ic">CALIBRATION</div><div><div class="n">450<small>p/gal</small></div><div class="l">flow calibration</div></div></div>
+    </div>`,
+  members: `
+    <div class="card"><h3>Enroll <small>type a name, then tap the tag</small></h3><div class="field"><input type="text" placeholder="Member name"><button class="btn">Enroll</button></div></div>
+    <div class="card"><h3>Members <small>tap to edit</small></h3>${memberRows(MEMBERS, 2)}</div>`,
+  water: `
+    <div class="grid" style="margin-bottom:12px"><div class="tile" style="min-height:0"><div class="n">412.6<small>gal</small></div><div class="l">total water</div></div><div class="tile" style="min-height:0"><div class="n">7.1<small>gal</small></div><div class="l">avg per shower</div></div></div>
+    <div class="card"><h3>Recent showers <small>last 20</small></h3>${sessionTable()}</div>`,
+  audio: `
+    <div class="card"><h3>Speaker <small>Select 4 Go · connected</small></h3><input class="range" type="range" min="0" max="100" value="60"><div class="muted">Volume 60 %</div>
+      <div class="acts"><button class="btn">Test tone</button><button class="btn">Play ch. 1</button><button class="btn sec">Stop</button><button class="btn sec">Find speaker</button></div>
+      <div class="acts"><button class="btn sec sm">Replace channel 1 audio…</button></div></div>
+    <div class="card"><h3>Music knob <small>raw 1873 / 4095</small></h3><div class="seg">${[0,1,2,3,4,5,6,7,8,9].map(i=>`<i class="${i===2?'on':''}"></i>`).join('')}</div>
+      <div><b>2 · Africa</b> <span class="tag">calibrated</span></div><div class="acts"><button class="btn sec">Recalibrate knob</button></div></div>`,
+  station: `
+    <div class="card"><h3>Health</h3><div class="kv"><span>Hub</span><span class="tag">OK</span><span>Relay</span><span class="tag">OK</span><span>RFID</span><span class="tag">OK</span><span>SD card</span><span class="tag">OK</span><span>Uptime</span><span>3 h 12 min</span><span>Heap</span><span>118 k free · low 96 k</span><span>Wi-Fi clients</span><span>1</span></div>
+      <div class="acts"><button class="btn dng">Reboot controller</button></div></div>
+    <div class="card"><h3>Flow calibration <small>450.00 pulses / gal</small></h3><div class="field"><input type="number" value="1.00"><button class="btn">Start</button><button class="btn sec" disabled>Stop &amp; save</button></div></div>
+    <div class="card"><h3>Admin password</h3><div class="field"><input type="text" value="••••••••••"><button class="btn sec">Update</button></div></div>`,
+};
+const C_TITLES = { home:'Shower Admin', members:'Members', water:'Water &amp; showers', audio:'Speaker &amp; music', station:'Station' };
+function mountC(el, view='home', state='idle') {
+  const live = state==='enroll' ? `<div class="live warn"><span class="pulse"></span><span>Waiting for Rook's wristband<small>tap it on the reader now</small></span></div>`
+             : state==='shower' ? `<div class="live"><span class="pulse"></span><span>Colton is showering<small>2.1 gal · 2:40 · limit 10 gal</small></span></div>`
+             : `<div class="live"><span class="pulse"></span><span>Shower open<small>tap a wristband to start</small></span></div>`;
+  el.innerHTML = `<div class="app"><div class="top"><div class="row1"><div><div class="eyebrow">Camp shower</div><div class="ttl">${C_TITLES[view]}</div></div>${view!=='home'?'<button class="back">‹ Home</button>':''}</div>${live}</div><div class="body">${C_VIEWS[view]}</div></div>`;
+  el.querySelectorAll('[data-go]').forEach(t => t.onclick = () => mountC(el, t.dataset.go, state));
+  const back = el.querySelector('.back'); if (back) back.onclick = () => mountC(el, 'home', state);
+}
+
+// ------------------------------------------------------------- build rows
+function frame(row, label, cls='') {
+  const cell = document.createElement('div'); cell.className = 'cell';
+  const lab = document.createElement('div'); lab.className = 'label'; lab.textContent = label;
+  const ph = document.createElement('div'); ph.className = 'phone ' + cls;
+  cell.append(lab, ph); row.appendChild(cell); return ph;
+}
+const rA = document.getElementById('rowA');
+mountA(frame(rA, 'Members tab · enrolling'), 'Members', 'enroll');
+mountA(frame(rA, 'Showers tab · someone showering'), 'Showers', 'shower');
+mountA(frame(rA, 'Audio tab · speaker fault'), 'Audio', 'fault');
+
+const rB = document.getElementById('rowB');
+mountB(frame(rB, 'Phone · idle, member open'), 'members', 'idle');
+mountB(frame(rB, 'Phone · SD fault, speaker fold open'), 'audio', 'fault');
+mountB(frame(rB, 'Laptop · two columns', 'wide'), 'cal', 'shower', true);
+
+const rC = document.getElementById('rowC');
+mountC(frame(rC, 'Home · idle (tap a tile)'), 'home', 'idle');
+mountC(frame(rC, 'Members · showering'), 'members', 'shower');
+mountC(frame(rC, 'Speaker & music'), 'audio', 'idle');
+</script>
+</body>
+</html>
