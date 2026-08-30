@@ -92,3 +92,32 @@ One pass through this list before the burn. Check items off as they pass.
       packet with a wrong secret is ignored and `[HEALTH]` shows no action.
 
 ## (add in-flight work below)
+
+## Admin relay and power configuration
+
+- [ ] **Upgrade defaults are inert:** boot with an existing `SETTINGS.CSV` that
+      has no relay keys. Pump remains mapped to relay 1; charger and accessory
+      show **Not assigned**, and no auxiliary relay energizes.
+- [ ] **Mapping validation and persistence:** assign pump, charger, and
+      accessory to three different channels. Duplicate assignments are
+      rejected. Reboot and confirm the mappings and accessory enabled state
+      survive.
+- [ ] **Accessory policy:** with the accessory load connected, toggle it off
+      and on from the local page and from another station's tab. Confirm the
+      choice persists across reboot and the commanded/unmonitored label does
+      not claim load feedback.
+- [ ] **Authorized charger lifecycle:** scan an authorized wristband and
+      confirm the charger relay turns on before START is pressed while the pump
+      remains off. Confirm charger and pump are off after BUTTON, TOUCH, LIMIT,
+      TIMEOUT, HANDOFF, REMOTE, REBOOT, SD_ERROR, and RELAY_ERROR exits, while
+      the enabled accessory rail remains on.
+- [ ] **Five-second raw tests:** while idle, test each channel and confirm only
+      the selected channel energizes, automatically stops within five seconds,
+      and restores accessory power. Repeat using immediate Stop and with the
+      browser disconnected mid-test. Confirm tests and remapping are rejected
+      during a session or flow calibration.
+- [ ] **Relay recovery:** disconnect and reconnect the 4Relay module while
+      idle. Confirm health changes to DOWN, recovery starts from all-off, and
+      the configured accessory state is restored. Verify the UI reports relay
+      state as commanded and downstream pump/charger/LED/display loads as
+      unmonitored.

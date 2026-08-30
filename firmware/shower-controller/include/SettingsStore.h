@@ -11,11 +11,22 @@ class SettingsStore {
     uint16_t minutes = 0;
   };
 
+  struct RelayConfig {
+    uint8_t pump = Config::DEFAULT_PUMP_RELAY;
+    uint8_t charger = Config::DEFAULT_CHARGER_RELAY;
+    uint8_t accessory = Config::DEFAULT_ACCESSORY_RELAY;
+    bool accessoryEnabled = Config::DEFAULT_ACCESSORY_ENABLED;
+  };
+
   bool begin();
   bool setCalibration(float pulsesPerGallon);
   bool setMusicKnobCalibration(
       const uint16_t positions[Config::MUSIC_KNOB_POSITION_COUNT]);
   bool setSpeakerVolumePercent(uint8_t percent);
+  bool setRelayConfig(const RelayConfig& config);
+  bool setAccessoryEnabled(bool enabled);
+  const RelayConfig& relayConfig() const { return relayConfig_; }
+  static bool relayConfigValid(const RelayConfig& config);
   bool setPassword(const String& password);
   bool verifyPassword(const String& password) const;
 
@@ -60,6 +71,7 @@ class SettingsStore {
   uint8_t passwordHash_[32] = {0};
   uint16_t musicKnobPositions_[Config::MUSIC_KNOB_POSITION_COUNT] = {0};
   uint8_t speakerVolumePercent_ = Config::DEFAULT_SPEAKER_VOLUME_PERCENT;
+  RelayConfig relayConfig_;
   RoleLimits roleLimits_[CampNet::ROLE_COUNT];
   uint32_t limitsVersion_ = 0;
   uint32_t highestSeenLimitsVersion_ = 0;

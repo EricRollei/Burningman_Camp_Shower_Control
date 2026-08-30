@@ -57,6 +57,10 @@ enum CommandAction : uint8_t {
   CMD_SPEAKER_SEARCH = 12,
   CMD_REBOOT = 13,
   CMD_END_SESSION = 14,       // ends the active session; pump goes off
+  CMD_RELAY_CONFIG = 15,      // args: pump, charger, accessory, accessory enabled
+  CMD_ACCESSORY_POWER = 16,   // args: uint8_t enabled
+  CMD_RELAY_TEST_START = 17,  // args: uint8_t physical channel (1..4)
+  CMD_RELAY_TEST_STOP = 18,
 };
 
 enum AckStatus : uint8_t { ACK_OK = 0, ACK_REJECTED = 1, ACK_UNAUTHORIZED = 2, ACK_UNSUPPORTED = 3 };
@@ -84,6 +88,12 @@ constexpr uint8_t FEATURE_DOOR_SIGN = 1 << 2;
 constexpr uint8_t FEATURE_ENROLL_PENDING = 1 << 3;
 constexpr uint8_t FEATURE_MUSIC_CALIBRATED = 1 << 4;
 constexpr uint8_t FEATURE_PUMP_ON = 1 << 5;
+constexpr uint8_t FEATURE_RELAY_CONFIG = 1 << 6;
+
+// TelemetryPacket.relayFlags bits. Relay state is the last successfully
+// commanded state; the 4Relay module has no contact/load feedback.
+constexpr uint8_t RELAY_ACCESSORY_ENABLED = 1 << 0;
+constexpr uint8_t RELAY_TEST_ACTIVE = 1 << 1;
 
 constexpr uint8_t COMMAND_ARG_BYTES = 40;
 constexpr uint8_t MAC_BYTES = 16;
@@ -183,7 +193,16 @@ struct TelemetryPacket {
   char playback[24];        // SpeakerAudio::playbackLabel()
   char calibrationMessage[36];
   char message[32];         // AdminServer lastMessage_
+  // Appended for wire compatibility: older firmware accepts the longer frame
+  // and ignores these bytes; newer firmware also accepts legacy short frames.
+  uint8_t relayState;
+  uint8_t pumpRelay;
+  uint8_t chargerRelay;
+  uint8_t accessoryRelay;
+  uint8_t relayFlags;
+  uint8_t relayTestChannel;
 };
+constexpr size_t TELEMETRY_LEGACY_BYTES = sizeof(TelemetryPacket) - 6;
 
 struct RecentEntry {
   uint8_t uidLen;
@@ -243,6 +262,7 @@ static_assert(sizeof(UsagePacket) <= MAX_PAYLOAD, "usage packet too large");
 static_assert(sizeof(MembersPacket) <= MAX_PAYLOAD, "members packet too large");
 static_assert(sizeof(LimitsPacket) <= MAX_PAYLOAD, "limits packet too large");
 static_assert(sizeof(TelemetryPacket) <= MAX_PAYLOAD, "telemetry packet too large");
+static_assert(sizeof(TelemetryPacket) == MAX_PAYLOAD, "unexpected telemetry wire size");
 static_assert(sizeof(RecentPacket) <= MAX_PAYLOAD, "recent packet too large");
 static_assert(sizeof(CommandPacket) <= MAX_PAYLOAD, "command packet too large");
 static_assert(sizeof(AckPacket) <= MAX_PAYLOAD, "ack packet too large");
