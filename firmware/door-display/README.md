@@ -34,6 +34,17 @@ packet counters to serial; it does not override the state supplied by the Tough.
 
 Each sign gets its own image with the shower id baked in:
 
+For routine flashing, run the repository's labeled terminal uploader from the
+repository root. It selects the USB port, confirms the door profile, and shows
+upload progress:
+
+```sh
+python3 firmware/uploader/firmware_uploader.py
+```
+
+See [`firmware/uploader/README.md`](../uploader/README.md) for details. The
+direct PlatformIO commands remain available for development:
+
 ```sh
 cd firmware/door-display
 pio run -e door1 --target upload    # sign on Shower 1
