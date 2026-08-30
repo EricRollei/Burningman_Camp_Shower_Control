@@ -13,6 +13,23 @@ From the repository root:
 python3 firmware/uploader/firmware_uploader.py
 ```
 
+To install the short `tawdry` command on macOS, run this once from the
+repository root:
+
+```sh
+ln -sf "$PWD/firmware/uploader/tawdry" "$HOME/.local/bin/tawdry"
+```
+
+After that, you can start the app from any directory with:
+
+```sh
+tawdry
+```
+
+The command forwards arguments, so `tawdry --dry-run` is also supported. The
+link points at this checkout, which means it always launches the uploader code
+you are currently working on.
+
 The app will:
 
 1. Ask which labeled station is being flashed.
