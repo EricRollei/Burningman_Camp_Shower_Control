@@ -24,7 +24,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{text-align:left;p
 <section class="card"><div class="eyebrow">Enroll wristband</div><label for="name">Member name</label><input id="name" maxlength="32" placeholder="e.g. Dusty River"><label for="enrollAt">Enroll on (tap the wristband on that station's reader)</label><select id="enrollAt"></select><div class="actions"><button id="arm">Enroll next tag</button><button id="cancel" class="secondary">Cancel</button></div></section></div>
 <section class="card"><h2>Members</h2><small>Usage is camp-wide. Edits here reach every station within seconds.</small><div id="members"><small>Loading…</small></div></section>
 <section class="card"><h2>Station limits</h2><p>Per-session limits by station kind; synced to every controller.</p><div style="overflow:auto"><table><thead><tr><th>Kind</th><th>Gallons</th><th>Minutes</th></tr></thead><tbody id="limits"></tbody></table></div><div class="actions"><button id="saveLimits">Save limits</button></div><small id="limitsInfo"></small></section>
-<section class="card"><h2>Change password</h2><label for="password">New admin password</label><input id="password" type="password" minlength="8" maxlength="64"><div class="actions"><button id="changePassword">Update password</button></div><small>One password for every station — it syncs over the camp network. You will be asked to sign in again.</small></section>
+<section class="card" id="pwCard" style="display:none"><h2>Change password</h2><label for="password">New admin password</label><input id="password" type="password" minlength="8" maxlength="64"><div class="actions"><button id="changePassword">Update password</button></div><small>One password for every station — it syncs over the camp network. You will be asked to sign in again.</small></section>
 <div id="tabs" class="tabs"></div><p id="msg"></p><div id="st">
 <div class="grid"><section class="card"><h2 id="stName">Station</h2><p id="sess">—</p><div class="actions"><button id="endSession" class="danger">End session</button></div></section>
 <section class="card"><h2>Flow calibration</h2><p>Dispense into a known-volume container, then stop at the measured volume.</p><label for="known">Known volume (gallons)</label><input id="known" type="number" min="0.01" max="100" step="0.01" value="1"><div class="actions"><button id="calStart">Start dispensing</button><button id="calStop" class="secondary">Stop &amp; save</button></div><p id="calStatus"></p></section></div>
@@ -39,7 +39,7 @@ $('#limits').innerHTML=LIM.map(([n,k])=>`<tr><td>${n}</td><td><input id="${k}Gal
 async function post(path,data={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});const j=await r.json();if(!r.ok)throw Error(j.message||'Request failed');return j}
 async function cmd(action,extra={},station=sel){try{const j=await post('/api/command',{station,action,...extra});let m=j.message;if(j.pending){m='';for(let i=0;i<13&&!m;i++){await new Promise(x=>setTimeout(x,300));const q=await(await fetch('/api/command?nonce='+j.nonce)).json();if(q.state=='done')m=(q.ok?'':'Rejected: ')+(q.message||'');else if(q.state!='pending')break}m=m||'No answer from '+nm(station)}T('msg',nm(station)+': '+m);refresh()}catch(e){alert(e.message)}}
 function pick(id){sel=id;localStorage.tab=id;render()}
-async function refresh(){if(busy)return;busy=true;const ctl=new AbortController();const tm=setTimeout(()=>ctl.abort(),5000);try{const r=await fetch('/api/overview',{signal:ctl.signal});const o=await r.json();const s=o.status,m=o.members;S=o.stations;T('here',`${s.station} · ${s.ssid}`);
+async function refresh(){if(busy)return;busy=true;const ctl=new AbortController();const tm=setTimeout(()=>ctl.abort(),5000);try{const r=await fetch('/api/overview',{signal:ctl.signal});const o=await r.json();const s=o.status,m=o.members;S=o.stations;T('here',`${s.station} · ${s.ssid}`);$('#pwCard').style.display=s.pagePassword?'':'none';
 T('peers',`Network: ${S.filter(x=>!x.local).map(p=>`${p.name} (${p.online?'online':'last seen '+p.lastSeenS+'s ago'})`).join(' · ')||'no other stations heard yet'} · rx ${s.net.rx} tx ${s.net.tx}${s.net.txFail?' fail '+s.net.txFail:''}`);
 const L=s.limits,lim=[];LIM.forEach(([n,k])=>lim.push([k+'Gal',L[k].gal],[k+'Min',L[k].min]));if(!lim.some(([id])=>document.activeElement===$('#'+id)))lim.forEach(([id,v])=>{$('#'+id).value=v});T('limitsInfo',`Version ${L.version} · members version ${s.membersVersion}`);
 const ea=$('#enrollAt'),ev=ea.value;ea.innerHTML=S.map(x=>`<option value="${x.id}">${esc(x.name)}${x.online?'':' (offline)'}</option>`).join('');ea.value=ev;if(!ea.value)ea.value=s.stationId;
@@ -268,6 +268,8 @@ bool AdminServer::takeEndSessionRequest() {
 }
 
 bool AdminServer::authorize() {
+  // The Wi-Fi password is the gate; the page itself is open unless enabled.
+  if (!Config::ADMIN_PAGE_PASSWORD) return true;
   String header = server_.header("Authorization");
   if (header.startsWith("Basic ")) {
     header.remove(0, 6);
@@ -325,7 +327,9 @@ void AdminServer::configureRoutes() {
   server_.on("/api/member", HTTP_POST, [this]() { if (authorize()) updateMember(); });
   server_.on("/api/rename", HTTP_POST, [this]() { if (authorize()) renameMember(); });
   server_.on("/api/delete", HTTP_POST, [this]() { if (authorize()) deleteMember(); });
-  server_.on("/api/password", HTTP_POST, [this]() { if (authorize()) changePassword(); });
+  if (Config::ADMIN_PAGE_PASSWORD) {
+    server_.on("/api/password", HTTP_POST, [this]() { if (authorize()) changePassword(); });
+  }
   server_.on("/api/calibration/start", HTTP_POST, [this]() { if (authorize()) sendAction(CampNet::CMD_CALIBRATION_START, "", 0.0F); });
   server_.on("/api/calibration/stop", HTTP_POST, [this]() {
     if (authorize()) sendAction(CampNet::CMD_CALIBRATION_STOP, "", server_.arg("gallons").toFloat());
@@ -788,6 +792,7 @@ String AdminServer::statusJson() const {
   body += ",\"role\":" + String(Config::STATION_ROLE_VALUE);
   body += ",\"roleName\":\"" + String(CampNet::roleName(Config::STATION_ROLE_VALUE)) + "\"";
   body += ",\"ssid\":\"" + String(Config::WIFI_AP_NAME) + "\"";
+  body += ",\"pagePassword\":" + String(Config::ADMIN_PAGE_PASSWORD ? "true" : "false");
   body += ",\"features\":{\"music\":" + String(Config::HAS_MUSIC ? "true" : "false");
   body += ",\"leds\":" + String(Config::HAS_LED_STRIP ? "true" : "false");
   body += ",\"doorSign\":" + String(Config::HAS_DOOR_SIGN ? "true" : "false") + "}";

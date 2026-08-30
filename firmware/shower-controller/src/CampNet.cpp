@@ -898,6 +898,7 @@ void CampNetLink::handle() {
       lastAuthMs_ = now;
       if (!peersInSync(&Peer::authVersion, settings_.authVersion())) authDirty_ = true;
     }
+    if (!Config::ADMIN_PAGE_PASSWORD) authDirty_ = false;  // nothing to sync
     if (authDirty_) {
       authDirty_ = false;
       lastAuthMs_ = now;

@@ -783,8 +783,8 @@ void setup() {
                 sessionsReady?"ok":"fail", ledgerReady?"ok":"fail", hubReady?"ok":"fail",
                 relayReady?"ok":"fail", rfidReady?"ok":"fail", netReady?"ok":"fail",
                 adminReady?"ok":"fail");
-  Serial.printf("[WEB] ssid=%s address=http://%s/ user=%s\n", Config::WIFI_AP_NAME,
-                admin.address().c_str(), Config::ADMIN_USERNAME);
+  Serial.printf("[WEB] ssid=%s address=http://%s/ page_password=%s\n", Config::WIFI_AP_NAME,
+                admin.address().c_str(), Config::ADMIN_PAGE_PASSWORD ? "on" : "off");
   Serial.printf("[NET] channel=%u door_sign=%s members_version=%lu limits_version=%lu\n",
                 CampNet::CHANNEL, Config::HAS_DOOR_SIGN ? "yes" : "no",
                 static_cast<unsigned long>(members.version()),

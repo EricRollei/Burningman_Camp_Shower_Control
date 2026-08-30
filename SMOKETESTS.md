@@ -77,8 +77,9 @@ One pass through this list before the burn. Check items off as they pass.
       and appears in Members on every page.
 - [ ] **Remote end session:** start a session at Shower 2, press End session
       from Shower 1's page — pump off within a second, logged as `REMOTE`.
-- [ ] **One password:** change the password on RV Fill's page; within 30 s
-      Shower 1's page asks for the new one.
+- [ ] **One network:** every Tough advertises `CampShower`; a phone that
+      joined at Shower 1 opens `http://192.168.4.1/` at the RV station without
+      re-entering anything and the page loads with no login prompt.
 - [ ] **Bad command rejected:** (optional, needs a spare ESP32) a COMMAND
       packet with a wrong secret is ignored and `[HEALTH]` shows no action.
 

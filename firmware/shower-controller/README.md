@@ -116,26 +116,29 @@ reconnecting a loose Grove cable without rebooting.
 
 ## Admin dashboard
 
-At boot each Tough creates its own local setup network:
+Every Tough runs a soft-AP with the same name and password, so a phone
+auto-joins whichever station is nearest and the same address works everywhere:
 
 | Setting | Value |
 |---|---|
-| Wi-Fi name | per station: `CampShower-1`, `CampShower-2`, `CampWaterFill`, `CampRVFill` |
-| Wi-Fi password | `camp-shower-setup` |
-| Setup page | `http://192.168.4.1/` |
+| Wi-Fi name | `CampShower` (every station) |
+| Wi-Fi password | `dustybutthole` |
+| Admin page | `http://192.168.4.1/` — no login; the Wi-Fi password is the gate |
 
 The network is local and does not provide internet access. To enroll a tag
-(at any station — the registry syncs to the others within seconds):
+(from any station — the registry syncs to the others within seconds):
 
-1. Join that station's Wi-Fi from a phone.
+1. Join `CampShower` from a phone.
 2. Open `http://192.168.4.1/` in the phone browser.
-3. Enter a member name and tap **Enroll next tag**.
-4. Tap the tag against the Tough's RFID2 reader.
+3. Pick the station whose reader you are standing at under **Enroll on**,
+   enter a member name and tap **Enroll next tag**.
+4. Tap the tag against that Tough's RFID2 reader.
 
-The initial dashboard login is `admin` / `change-me-shower`. Change it from
-the dashboard before field use. The password is stored on the SD card as a
-salted SHA-256 hash. HTTP Basic authentication protects the controller's local
-admin page.
+The page title says which station you are physically connected to; that only
+matters for audio upload. `Config::ADMIN_PAGE_PASSWORD` (`include/Config.h`)
+re-enables HTTP Basic login (`admin` / initial `change-me-shower`, salted
+SHA-256 on the SD card, synced between stations) if a page password is ever
+wanted again.
 
 The association is written to `/MEMBERS.CSV` on the microSD card. The setup
 page lists registered tags with their camp-wide usage (showers, water fill,
@@ -174,10 +177,12 @@ remembered in the browser. Cards grey out while a station is offline.
   the 10-minute calibration timeout) and end a session (pump off, logged with
   reason `REMOTE`). Nothing over the air can open a shower session or turn the
   pump on for one; that still takes a wristband and the physical button.
-- Audio upload is local only: join the Wi-Fi of the station whose channel 1
-  track you want to replace. The upload button is disabled on other tabs.
-- Changing the password on any station syncs the new salted hash to every
-  station (`AUTH` packet), so there is one admin password for the camp.
+- Audio upload is local only: stand at the station whose channel 1 track you
+  want to replace so the phone is on its AP (the page title names it). The
+  upload button is disabled on other tabs.
+- There is no page login by default (the shared Wi-Fi password is the gate).
+  If `ADMIN_PAGE_PASSWORD` is enabled, changing the password on any station
+  syncs the salted hash to every station (`AUTH` packet).
 - The legacy per-action routes (`/api/enroll`, `/api/calibration/*`,
   `/api/audio/*`, `/api/reboot`, ...) still work and act on the local station.
 

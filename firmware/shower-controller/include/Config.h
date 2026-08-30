@@ -116,9 +116,6 @@ constexpr bool HAS_DOOR_SIGN = IS_SHOWER;
 constexpr const char* STATION_NAMES[CampNet::MAX_STATIONS + 1] = {
     "", "Shower 1", "Shower 2", "Water Fill", "RV Fill",
     "Station 5", "Station 6", "Station 7", "Station 8"};
-constexpr const char* STATION_SSIDS[CampNet::MAX_STATIONS + 1] = {
-    "", "CampShower-1", "CampShower-2", "CampWaterFill", "CampRVFill",
-    "CampStation-5", "CampStation-6", "CampStation-7", "CampStation-8"};
 constexpr const char* STATION_NAME = STATION_NAMES[STATION_ID_VALUE];
 // Indexed by role: shower, water fill, RV fill.
 constexpr const char* ROLE_HEADER_LABELS[CampNet::ROLE_COUNT] = {"CAMP SHOWER", "WATER FILL", "RV FILL"};
@@ -172,10 +169,13 @@ constexpr uint32_t NET_LEDGER_SAVE_DEBOUNCE_MS = 15000;
 constexpr uint32_t NET_BOOT_ANNOUNCE_DELAY_MS = 2000;
 constexpr uint8_t WIFI_AP_MAX_CLIENTS = 8;
 
-// Each station runs its own admin soft-AP (SSID from STATION_SSIDS) pinned to
-// CampNet::CHANNEL. Change the password before field use.
-constexpr const char* WIFI_AP_NAME = STATION_SSIDS[STATION_ID_VALUE];
-constexpr char WIFI_AP_PASSWORD[] = "camp-shower-setup";
+// Every station runs a soft-AP with the same name and password, pinned to
+// CampNet::CHANNEL, so a phone auto-joins whichever is nearest and
+// http://192.168.4.1/ works everywhere. The Wi-Fi password is the only gate:
+// the admin page itself is open (ADMIN_PAGE_PASSWORD = false).
+constexpr char WIFI_AP_NAME[] = "CampShower";
+constexpr char WIFI_AP_PASSWORD[] = "dustybutthole";
+constexpr bool ADMIN_PAGE_PASSWORD = false;
 constexpr char ADMIN_USERNAME[] = "admin";
 // Used only to initialize a new SD card. Change this before field deployment.
 constexpr char INITIAL_ADMIN_PASSWORD[] = "change-me-shower";

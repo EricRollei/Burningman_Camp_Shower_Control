@@ -131,8 +131,10 @@ the same station id.
 
 Update the relevant firmware README whenever pins, wiring, credentials,
 protocols, build steps, user-visible behavior, CSV schemas, or SD-card paths
-change. Do not commit real deployment credentials; configuration currently
-contains prototype defaults that must be replaced before field use.
+change. The shared Wi-Fi name/password in `Config.h` are the deployed camp
+credentials by the owner's decision (the admin page has no login of its own;
+`ADMIN_PAGE_PASSWORD` re-enables HTTP Basic auth). `CampNet::SECRET` in the
+shared header should still be changed from its prototype default.
 
 ## Code Conventions
 
