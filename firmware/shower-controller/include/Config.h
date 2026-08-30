@@ -48,9 +48,10 @@ constexpr uint32_t SUMMARY_DISPLAY_MS = 10000;
 
 // Addressable shower lighting: Port C white/GPIO13 drives the 12 V WS2811-style
 // strip data input. Strip power is separate; its negative bus is shared with
-// Tough. Count addressable three-LED groups, not individual LED packages.
+// Tough. The installed 2 m strip is estimated at 60 physical LEDs/m: 120 LEDs,
+// or 40 addressable three-LED groups. Count groups, not individual packages.
 constexpr uint8_t LED_STRIP_PIN = 13;
-constexpr uint16_t LED_STRIP_COUNT = 300;
+constexpr uint16_t LED_STRIP_COUNT = 40;
 constexpr uint8_t LED_STRIP_BRIGHTNESS = 96;
 constexpr uint32_t LED_ANIMATION_INTERVAL_MS = 30;
 constexpr uint8_t LED_RAINBOW_SPACING = 3;

@@ -81,7 +81,7 @@ stations**, so most quantities are **×2** (some multi-packs cover both).
 |------|-------------|:---:|:---:|:---:|-------|-------|
 | USB-C buck converter | BEYIMEI 12V→5V USB-C, 3A/15W, fused | 1 | ✅ | $13.99 | [B0D3THTQJK](https://www.amazon.com/dp/B0D3THTQJK) | Session-gated |
 | USB-C panel outlet | | 1 | 🔍 | | | |
-| LED strip | 12V addressable, ~24 ft | 1 | 🔍 | | | Strip TBD |
+| LED strip | 12V addressable, 2 m | 1 | 🔍 | | | LED density TBD; firmware assumes 60 LEDs/m |
 
 ## Connectors, Wire & Terminals
 

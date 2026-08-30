@@ -86,7 +86,7 @@ Enabled only during an authorized shower session.
 
 ## LED Lighting
 
-- ~24 ft around shower perimeter
+- 2 m around shower perimeter; firmware assumes 60 physical LEDs/m
 - 12V addressable strip (TBD)
 - Power from fused 12V supply; main power switched by relay
 - Data from M5Stack GPIO

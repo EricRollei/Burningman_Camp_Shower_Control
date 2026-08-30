@@ -405,10 +405,12 @@ calibration, the ten captured notch positions define quiet and channels 1-9.
 Serial output reports the raw ADC value and selected channel for diagnostics.
 
 The addressable strip runs a continuous moving rainbow. The installed strip is
-a 12 V WS2811-style three-wire strip in GRB order. Adjust `LED_STRIP_COUNT` in
-`include/Config.h` to its number of addressable groups (typically one group per
-three physical LEDs), not its raw LED-package count. Power the strip directly
-from its fused 12 V branch, connect its negative return to the same fuse-block
+a 2 m, 12 V WS2811-style three-wire strip in GRB order. The configured estimate
+is 60 physical LEDs/m: 120 physical LEDs arranged as 40 addressable groups.
+Adjust `LED_STRIP_COUNT` in `include/Config.h` if the physical strip has a
+different density; count addressable groups (typically one group per three
+physical LEDs), not its raw LED-package count. Power the strip directly from
+its fused 12 V branch, connect its negative return to the same fuse-block
 negative bus as Tough, and connect Port C's white/GPIO13 wire to the strip data
 input. Never feed 12 V into a Tough GPIO. A 220-470 ohm series resistor at the
 strip data input is recommended. For a long data lead, use a 74HCT-family
