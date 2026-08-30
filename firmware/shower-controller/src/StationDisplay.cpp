@@ -45,6 +45,31 @@ void StationDisplay::invalidate() {
 
 String StationDisplay::displayName(const char* name) const {
   String value = name == nullptr ? "" : String(name);
+  value.trim();
+
+  // Mad T's loaner wristbands are registered by number. Keep the compact
+  // numeric registry value for administration, but make the camp identity
+  // explicit on the person-facing station display.
+  bool numeric = !value.isEmpty();
+  for (size_t i = 0; i < value.length() && numeric; ++i) {
+    numeric = value[i] >= '0' && value[i] <= '9';
+  }
+  if (numeric) {
+    value = "Mad T " + value;
+  } else {
+    // Named campers see first name + last initial. The registry, dashboard,
+    // telemetry and logs retain the full name; this only formats the Tough UI.
+    const int firstSpace = value.indexOf(' ');
+    if (firstSpace > 0) {
+      int lastEnd = static_cast<int>(value.length()) - 1;
+      while (lastEnd >= 0 && value[lastEnd] == ' ') --lastEnd;
+      int lastStart = lastEnd;
+      while (lastStart > 0 && value[lastStart - 1] != ' ') --lastStart;
+      if (lastStart > firstSpace && lastStart <= lastEnd) {
+        value = value.substring(0, firstSpace) + " " + value[lastStart] + ".";
+      }
+    }
+  }
   value.toUpperCase();
   if (value.length() > 24U) {
     value.remove(21);

@@ -80,7 +80,10 @@ relay or changes a session.
    the configured accessory rail is restored if it is enabled.
 2. An enabled, enrolled wristband opens a shower session with the configured
    pump relay off, turns on the configured phone-charger relay, and shows the
-   member's name, burn total, and **PRESS BUTTON TO START WATER**.
+   member's name, burn total, and **PRESS BUTTON TO START WATER**. On the
+   person-facing Tough display, ordinary names are shortened to first name and
+   last initial (`MICHAEL P.`), while numeric sister-camp registrations display
+   as `MAD T 12`. Full names remain unchanged in the admin page and logs.
 3. The first physical button press starts the water. The screen shows live
    gallons, elapsed time, and **PRESS BUTTON WHEN DONE**.
 4. The second physical button press ends the shower and turns the pump off.
@@ -156,8 +159,8 @@ The association is written to `/MEMBERS.CSV` on the microSD card. The
 **Members** page lists registered tags with their camp-wide usage and any
 custom shower limit; tapping a member opens an inline editor (name, shower
 limit, can-start toggle, delete). Every change propagates to the other
-stations over CampNet. Deleting a registration does not delete historical
-usage.
+stations over CampNet. Up to 100 members may be registered. Deleting a
+registration does not delete historical usage.
 
 ### One page for every station
 

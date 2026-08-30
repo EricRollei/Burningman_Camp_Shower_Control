@@ -29,7 +29,7 @@ constexpr char MEMBER_PATH[] = "/MEMBERS.CSV";
 constexpr char VERSION_PATH[] = "/MEMBERS.VER";
 constexpr char AP_NAME[] = "CampTagProgrammer";
 constexpr char AP_PASSWORD[] = "dustybutthole";
-constexpr size_t MAX_MEMBERS = 64;
+constexpr size_t MAX_MEMBERS = 100;
 constexpr size_t UID_SIZE = 21;
 constexpr size_t NAME_SIZE = 33;
 
@@ -54,6 +54,7 @@ uint32_t lastScanMs = 0;
 String lastScannedUid;
 String pendingName;
 String statusMessage = "Starting...";
+String serialCommand;
 bool screenDirty = true;
 
 I2cHub i2cHub;
@@ -262,7 +263,7 @@ void handleScannedUid(const String& uid) {
     setStatus("Already enrolled as " + String(members[existing].name));
     return;
   }
-  if (memberCount >= MAX_MEMBERS) { setStatus("Registry full (64 tags)"); return; }
+  if (memberCount >= MAX_MEMBERS) { setStatus("Registry full (100 tags)"); return; }
   Member& member = members[memberCount++];
   strlcpy(member.uid, uid.c_str(), sizeof(member.uid));
   strlcpy(member.name, name.c_str(), sizeof(member.name));
@@ -296,6 +297,62 @@ void pollRfid() {
   handleScannedUid(uid);
 }
 
+void printBackup() {
+  Serial.println("[BACKUP] BEGIN MEMBERS.CSV");
+  Serial.println("uid,name,allowance_gallons,enabled");
+  for (size_t i = 0; i < memberCount; ++i) {
+    Serial.printf("%s,%s,%.3f,%u\n", members[i].uid, members[i].name,
+                  members[i].allowance, members[i].enabled ? 1 : 0);
+  }
+  Serial.println("[BACKUP] END MEMBERS.CSV");
+  Serial.println("[BACKUP] BEGIN MEMBERS.VER");
+  Serial.println(static_cast<unsigned long>(registryVersion));
+  Serial.println("[BACKUP] END MEMBERS.VER");
+  Serial.printf("[BACKUP] COMPLETE members=%u version=%lu\n",
+                static_cast<unsigned>(memberCount),
+                static_cast<unsigned long>(registryVersion));
+}
+
+void handleSerial() {
+  while (Serial.available()) {
+    const char value = static_cast<char>(Serial.read());
+    if (value == '\n' || value == '\r') {
+      serialCommand.trim();
+      String lowered = serialCommand;
+      lowered.toLowerCase();
+      if (lowered == "backup") {
+        printBackup();
+      } else if (lowered.startsWith("rename ")) {
+        const int nameSeparator = serialCommand.indexOf(' ', 7);
+        String uid = nameSeparator > 7 ? serialCommand.substring(7, nameSeparator) : "";
+        const String name = cleanName(nameSeparator > 0 ? serialCommand.substring(nameSeparator + 1) : "");
+        uid.toUpperCase();
+        const int index = findMember(uid.c_str());
+        if (index < 0 || name.isEmpty()) {
+          Serial.println("[RENAME] failed: use rename <UID> <name>");
+        } else {
+          const Member previous = members[index];
+          strlcpy(members[index].name, name.c_str(), sizeof(members[index].name));
+          if (commitRegistry()) {
+            setStatus("Updated " + name);
+            Serial.printf("[RENAME] OK uid=%s old=%s new=%s version=%lu\n",
+                          uid.c_str(), previous.name, members[index].name,
+                          static_cast<unsigned long>(registryVersion));
+          } else {
+            members[index] = previous;
+            Serial.println("[RENAME] failed: SD save error");
+          }
+        }
+      } else if (!serialCommand.isEmpty()) {
+        Serial.println("[HELP] commands: backup, rename <UID> <name>");
+      }
+      serialCommand = "";
+    } else if (serialCommand.length() < 32) {
+      serialCommand += value;
+    }
+  }
+}
+
 const char PAGE[] PROGMEM = R"HTML(
 <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Camp Tag Programmer</title><style>
@@ -307,7 +364,7 @@ const char PAGE[] PROGMEM = R"HTML(
 <script>
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function post(path,data){const body=new URLSearchParams(data);const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});const j=await r.json();if(!r.ok)throw Error(j.message||'Request failed');return j}
-async function refresh(){try{const s=await(await fetch('/api/status',{cache:'no-store'})).json();$('#hardware').innerHTML=`<span class="${s.rfid&&s.sd?'good':'bad'}">RFID ${s.rfid?'ready':'missing'} · SD ${s.sd?'ready':'missing'}</span>`;$('#message').textContent=s.pending?`Waiting for ${s.pending} — tap wristband now.`:s.message;$('#count').textContent=`${s.members.length} / 64`;$('#members').innerHTML=s.members.length?s.members.map(m=>`<div class="member"><div class="row"><div><strong>${esc(m.name)}</strong> ${m.enabled?'':'<span class="bad">disabled</span>'}<div class="uid">${esc(m.uid)}</div></div><div><button class="secondary" onclick="editMember('${m.uid}','${encodeURIComponent(m.name)}',${m.allowance},${m.enabled})">Edit</button><button class="danger" onclick="removeMember('${m.uid}')">Delete</button></div></div></div>`).join(''):'<span class="muted">No tags enrolled yet.</span>'}catch(e){$('#hardware').textContent='Programmer not responding'} }
+async function refresh(){try{const s=await(await fetch('/api/status',{cache:'no-store'})).json();$('#hardware').innerHTML=`<span class="${s.rfid&&s.sd?'good':'bad'}">RFID ${s.rfid?'ready':'missing'} · SD ${s.sd?'ready':'missing'}</span>`;$('#message').textContent=s.pending?`Waiting for ${s.pending} — tap wristband now.`:s.message;$('#count').textContent=`${s.members.length} / 100`;$('#members').innerHTML=s.members.length?s.members.map(m=>`<div class="member"><div class="row"><div><strong>${esc(m.name)}</strong> ${m.enabled?'':'<span class="bad">disabled</span>'}<div class="uid">${esc(m.uid)}</div></div><div><button class="secondary" onclick="editMember('${m.uid}','${encodeURIComponent(m.name)}',${m.allowance},${m.enabled})">Edit</button><button class="danger" onclick="removeMember('${m.uid}')">Delete</button></div></div></div>`).join(''):'<span class="muted">No tags enrolled yet.</span>'}catch(e){$('#hardware').textContent='Programmer not responding'} }
 $('#arm').onclick=async()=>{const name=$('#name').value.trim();if(!name)return alert('Enter a member name first.');try{await post('/api/arm',{name});refresh()}catch(e){alert(e.message)}};
 $('#cancel').onclick=async()=>{await post('/api/cancel',{});refresh()};
 async function editMember(uid,name,allowance,enabled){name=decodeURIComponent(name);const n=prompt('Member name',name);if(!n)return;const a=prompt('Custom shower limit in gallons (0 = station limit)',allowance);if(a===null)return;const en=confirm('Allow this wristband to start sessions?');try{await post('/api/member',{uid,name:n,allowance:a,enabled:en?'1':'0'});refresh()}catch(e){alert(e.message)}}
@@ -368,12 +425,16 @@ void setupWeb() {
   server.on("/api/delete", HTTP_POST, []() {
     const int index = findMember(server.arg("uid").c_str());
     if (index < 0) return sendJsonMessage(404, false, "Registration not found");
-    Member backup[MAX_MEMBERS];
-    memcpy(backup, members, sizeof(members));
+    const Member removed = members[index];
     const size_t previousCount = memberCount;
     for (size_t i = static_cast<size_t>(index); i + 1 < memberCount; ++i) members[i] = members[i + 1];
     --memberCount;
-    if (!commitRegistry()) { memcpy(members, backup, sizeof(members)); memberCount = previousCount; return sendJsonMessage(500, false, "SD save failed"); }
+    if (!commitRegistry()) {
+      for (size_t i = memberCount; i > static_cast<size_t>(index); --i) members[i] = members[i - 1];
+      members[index] = removed;
+      memberCount = previousCount;
+      return sendJsonMessage(500, false, "SD save failed");
+    }
     setStatus("Registration deleted");
     sendJsonMessage(200, true, statusMessage);
   });
@@ -427,12 +488,14 @@ void setup() {
                 wifiReady ? "ready" : "failed");
   Serial.printf("[WEB] ssid=%s password=%s address=http://%s/\n", AP_NAME, AP_PASSWORD,
                 WiFi.softAPIP().toString().c_str());
+  Serial.println("[HELP] USB commands: backup, rename <UID> <name>");
   drawScreen();
 }
 
 void loop() {
   M5.update();
   server.handleClient();
+  handleSerial();
   pollRfid();
   drawScreen();
   delay(2);

@@ -109,7 +109,9 @@ class CampNetLink {
     uint8_t data[CampNet::MAX_PAYLOAD];
   };
   static constexpr size_t RX_RING = 12;
-  static constexpr size_t TX_RING = 24;
+  // A full 100-member registry occupies 25 ESP-NOW frames. Leave room for
+  // usage, status, telemetry and limits queued in the same service pass.
+  static constexpr size_t TX_RING = 48;
   static constexpr uint32_t TX_TIMEOUT_MS = 50;
   static constexpr size_t OUTSTANDING_COMMANDS = 4;
   static constexpr size_t INCOMING_COMMANDS = 4;
@@ -250,6 +252,6 @@ class CampNetLink {
   uint32_t stagingVersion_ = 0;
   uint8_t stagingChunkCount_ = 0;
   uint8_t stagingTotal_ = 0;
-  uint16_t stagingReceivedMask_ = 0;
+  uint32_t stagingReceivedMask_ = 0;
   uint32_t stagingStartMs_ = 0;
 };

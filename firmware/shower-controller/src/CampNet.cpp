@@ -355,7 +355,7 @@ void CampNetLink::handleMembers(const CampNet::MembersPacket& packet, int length
   members_.noteRemoteVersion(packet.version);
   // Older than what we hold: nothing to learn (they will adopt ours).
   if (packet.version < members_.version()) return;
-  if (packet.chunkCount == 0 || packet.chunkCount > 16 ||
+  if (packet.chunkCount == 0 || packet.chunkCount > 32 ||
       packet.chunkIndex >= packet.chunkCount ||
       packet.totalMembers > MemberRegistry::MAX_MEMBERS) return;
 
@@ -386,9 +386,11 @@ void CampNetLink::handleMembers(const CampNet::MembersPacket& packet, int length
   for (size_t i = 0; i < count && base + i < MemberRegistry::MAX_MEMBERS; ++i) {
     staging_[base + i] = packet.entries[i];
   }
-  stagingReceivedMask_ |= static_cast<uint16_t>(1U << packet.chunkIndex);
+  stagingReceivedMask_ |= static_cast<uint32_t>(1UL << packet.chunkIndex);
 
-  const uint16_t complete = static_cast<uint16_t>((1U << packet.chunkCount) - 1U);
+  const uint32_t complete = packet.chunkCount == 32
+                                ? UINT32_MAX
+                                : static_cast<uint32_t>((1UL << packet.chunkCount) - 1UL);
   if (stagingReceivedMask_ != complete) return;
 
   const uint8_t station = stagingStation_;

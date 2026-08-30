@@ -2,6 +2,7 @@
 
 Standalone batch-enrollment firmware for an M5Stack Tough and RFID2 reader.
 It reads each wristband's factory UID; it does not modify data on the tag.
+The registry holds up to 100 members, matching the production controller.
 
 The programmer intentionally contains no relay, pump, flow-meter, audio, or
 CampNet control code. The RFID2 may be connected directly to the Tough's
@@ -21,6 +22,12 @@ two production-compatible files from the SD card:
 
 - `/MEMBERS.CSV`
 - `/MEMBERS.VER`
+
+For an offline backup without joining the programmer's Wi-Fi, open a USB
+serial monitor at 115200 baud and send `backup`. The firmware prints both
+files between clearly labeled `[BACKUP] BEGIN` / `[BACKUP] END` markers.
+An existing assignment can be corrected with `rename <UID> <name>`; the
+change is saved to the same production-compatible registry files.
 
 Copy both files to the root of each production controller's microSD card while
 the controller is powered off. Alternatively, retain this card in a Tough,

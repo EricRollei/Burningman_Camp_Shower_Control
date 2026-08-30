@@ -6,7 +6,9 @@
 
 class MemberRegistry {
  public:
-  static constexpr size_t MAX_MEMBERS = 64;
+  static constexpr size_t MAX_MEMBERS = 100;
+  static_assert(MAX_MEMBERS <= CampNet::MEMBER_ENTRIES_PER_PACKET * 32,
+                "CampNet member chunk mask is too small");
 
   bool begin();
   bool upsert(const char* uid, const String& name);

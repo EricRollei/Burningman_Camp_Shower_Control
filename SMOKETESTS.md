@@ -66,6 +66,10 @@ One pass through this list before the burn. Check items off as they pass.
       Press GPIO14 once: pump on and the footer changes to `PRESS BUTTON WHEN
       DONE`. Press it again: pump off, summary screen, reason `BUTTON`. Confirm
       presses without an authorized session and during calibration do nothing.
+- [ ] **Camper display names:** scan a normally named member and confirm the
+      Tough shows first name plus last initial (for example `MICHAEL P.`),
+      while the admin page retains the full name. Scan a numeric Mad T member
+      and confirm the Tough shows `MAD T <number>`.
 - [ ] **Big Top screen flow and readability:** in direct sun and at night,
       inspect idle, logged-in, dispensing, summary, denial, unavailable, and
       calibration screens. Confirm the red/cream sunburst, gold frame, bulbs,
@@ -92,6 +96,10 @@ One pass through this list before the burn. Check items off as they pass.
       the other three and Camp settings lists them as online.
 - [ ] **Enroll anywhere:** enroll a wristband on the water-fill station, tap
       it on a shower within 30 s — session opens.
+- [ ] **Registry over 64 members:** with at least 65 test registrations,
+      confirm the admin page lists them all and the 65th wristband opens a
+      session on a different station after CampNet sync. Production capacity
+      is 100 members.
 - [ ] **Camp-wide total on the summary screen:** finish a shower, then a
       water fill with the same wristband — the fill's ticket shows its session
       gallons and a total that includes the earlier shower.
