@@ -9,6 +9,9 @@ desktop.ini
 # VS Code Local History extension
 .history/
 
+# Local agent worktrees and session state
+.claude/
+
 # Build / firmware artifacts
 build/
 .pio/
