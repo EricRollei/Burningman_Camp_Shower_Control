@@ -46,12 +46,12 @@ constexpr uint32_t BUTTON_DEBOUNCE_MS = 40;
 // How long the usage summary stays on screen after a shower ends.
 constexpr uint32_t SUMMARY_DISPLAY_MS = 10000;
 
-// Addressable shower lighting: Port C white/GPIO13 drives the 12 V WS2811-style
-// strip data input. Strip power is separate; its negative bus is shared with
-// Tough. The installed 2 m strip is estimated at 60 physical LEDs/m: 120 LEDs,
-// or 40 addressable three-LED groups. Count groups, not individual packages.
+// Addressable shower lighting: Port C white/GPIO13 drives the 12 V strip's
+// WS2812-compatible data input. Strip power is separate; its negative bus is
+// shared with Tough. Bench testing confirms 120 individually addressable
+// pixels: a 40-pixel frame drove almost exactly one-third of the 2 m strip.
 constexpr uint8_t LED_STRIP_PIN = 13;
-constexpr uint16_t LED_STRIP_COUNT = 40;
+constexpr uint16_t LED_STRIP_COUNT = 120;
 constexpr uint8_t LED_STRIP_BRIGHTNESS = 96;
 constexpr uint32_t LED_ANIMATION_INTERVAL_MS = 30;
 constexpr uint8_t LED_RAINBOW_SPACING = 3;

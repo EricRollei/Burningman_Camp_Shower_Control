@@ -39,7 +39,7 @@ Control Electronics,SD card,For CSV logs,1,,,searching,,,Not on list
 Control Electronics,RTC,Real-time clock,1,,,undecided,,,For log timestamps
 Charging & Accessories,USB-C buck converter,"BEYIMEI 12V->5V USB-C, 3A/15W, fused",1,,,selected,$13.99,https://www.amazon.com/dp/B0D3THTQJK,Session-gated
 Charging & Accessories,USB-C panel outlet,,1,,,searching,,,
-Charging & Accessories,LED strip,12V addressable 2 m,1,,,searching,,,LED density TBD; firmware assumes 60 LEDs/m
+Charging & Accessories,LED strip,12V addressable 2 m,1,,,searching,,,120 individually addressable pixels confirmed on bench
 Connectors Wire & Terminals,Anderson SB50,"PAEKQ 50A cable, 7 AWG, O-ring (pair)",1,,,selected,$16.99 /pair,https://www.amazon.com/dp/B0F6L9L9GG,Battery quick-disconnect
 Connectors Wire & Terminals,Deutsch DT (pump),Nilight 2-pin DT 16 AWG (6 kits),1,,,selected,$12.30,https://www.amazon.com/dp/B0CMQHQ3LL,Waterproof
 Connectors Wire & Terminals,Lever connectors,HTCELLE 28-12 AWG splice kit (60 pc),1,,,selected,$9.99,https://www.amazon.com/dp/B0C3LBWSTZ,Quick splices

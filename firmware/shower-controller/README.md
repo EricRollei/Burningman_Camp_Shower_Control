@@ -409,17 +409,16 @@ Serial output reports the raw ADC value and selected channel for diagnostics.
 The addressable strip stays black while no member is logged in. An authorized
 wristband enables the effects for the full session, including the wait before
 the water starts; every session exit turns the pixels black again. The installed
-strip is a 2 m, 12 V WS2811-style three-wire strip in GRB order. The configured
-estimate is 60 physical LEDs/m: 120 physical LEDs arranged as 40 addressable groups.
-Adjust `LED_STRIP_COUNT` in `include/Config.h` if the physical strip has a
-different density; count addressable groups (typically one group per three
-physical LEDs), not its raw LED-package count. Power the strip directly from
-its fused 12 V branch, connect its negative return to the same fuse-block
-negative bus as Tough, and connect Port C's white/GPIO13 wire to the strip data
-input. Never feed 12 V into a Tough GPIO. A 220-470 ohm series resistor at the
-strip data input is recommended. For a long data lead, use a 74HCT-family
-3.3-to-5 V level shifter close to Tough; inject 12 V power along the long strip
-as required by measured current and voltage drop.
+strip is a 2 m, 12 V three-wire strip in GRB order with WS2812-compatible data
+signaling. Bench testing confirmed 120 individually addressable pixels: a
+40-pixel frame drove almost exactly one-third of the strip. `LED_STRIP_COUNT` in
+`include/Config.h` is therefore 120. Power the strip directly from its fused
+12 V branch, connect its negative return to the same fuse-block negative bus as
+Tough, and connect Port C's white/GPIO13 wire to the strip data input. Never
+feed 12 V into a Tough GPIO. A 220-470 ohm series resistor at the strip data
+input is recommended. For a long data lead, use a 74HCT-family 3.3-to-5 V level
+shifter close to Tough; inject 12 V power along the long strip as required by
+measured current and voltage drop.
 
 Every music channel has a synchronized, song-specific cue show matched to the
 exact installed PCM edit. The PCM byte position is the clock, so restarting a
