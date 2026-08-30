@@ -69,10 +69,15 @@ Treat pump and relay behavior as safety-critical.
 - Boot, session exit, timeout, storage failure, and relay communication failure
   must leave all relays off.
 - The pump must never start merely from an RFID scan. A valid active session
-  and a first explicit pump-button press are required. The next press ends the
-  session and turns the pump off; it does not merely pause the water.
-- Keep the Tough touchscreen display-only. Preserve the post-session gallons
-  and elapsed-time summary before returning to the ready screen.
+  and a first explicit start action are required: either the GPIO14 button or
+  a tap on the on-screen START circle. The next action ends the session and
+  turns the pump off; it does not merely pause the water. Both inputs go
+  through the same `toggleShowerWater()` path; do not add a second one.
+- The Tough touchscreen carries only the backup START/STOP circle on the
+  in-progress screen; keep every other screen display-only. Touch must use
+  the press edge plus `TOUCH_DEBOUNCE_MS`, never level or repeat events.
+  Preserve the post-session gallons and elapsed-time summary before returning
+  to the ready screen.
 - Unknown or disabled tags must not open a session or terminate another
   member's session. A different authorized tag ends the prior session with
   reason `HANDOFF` before starting the new member's session.

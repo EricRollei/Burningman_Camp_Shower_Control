@@ -41,6 +41,14 @@ One pass through this list before the burn. Check items off as they pass.
       correct immediately after (no reboot needed).
 - [ ] **Door display:** confirm the OLED sign still tracks
       OPEN / IN_USE / UNAVAILABLE through a full session.
+- [ ] **Touch START/STOP backup:** tap a wristband; a large green START circle
+      appears. Tap the circle once: pump relay clicks on, circle turns red and
+      reads STOP. Tap STOP: pump off, summary screen, session logged with
+      reason `TOUCH`. Then repeat mixing inputs (touch START, button finish;
+      button start, touch STOP). Confirm a tap outside the circle, a tap on the
+      idle/summary screens, and a rapid double-tap on START each do nothing
+      extra (water stays on after the double-tap). Confirm the touch does
+      nothing while no session is open or during calibration.
 
 ## CampNet (branch `worktree-camp-network`)
 

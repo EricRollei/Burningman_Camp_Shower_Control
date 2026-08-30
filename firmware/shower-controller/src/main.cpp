@@ -51,6 +51,7 @@ uint32_t calibrationStartPulses = 0;
 uint32_t calibrationStartMs = 0;
 uint32_t lastBusProbeMs = 0;
 uint32_t buttonChangedMs = 0;
+uint32_t lastTouchActionMs = 0;
 uint32_t lastMusicKnobReadMs = 0;
 uint32_t lastMusicKnobLogMs = 0;
 uint32_t lastMusicStartAttemptMs = 0;
@@ -189,24 +190,34 @@ void drawScreen() {
     drawCentered(footer, 214, 1, TFT_LIGHTGREY);
   } else if (screenState == ScreenState::ACTIVE) {
     drawHeader(Config::ROLE_ACTIVE_LABELS[Config::STATION_ROLE_VALUE], TFT_GREEN);
-    drawCentered(activeName, 38, 2, TFT_WHITE);
+    drawCentered(activeName, 32, 2, TFT_WHITE);
     char amount[32];
     snprintf(amount, sizeof(amount), "%.2f gal", gallonsFor(sessionPulses));
-    drawCentered(amount, 72, 4, TFT_CYAN);
+    drawCentered(amount, 54, 4, TFT_CYAN);
     char limit[40];
     snprintf(limit, sizeof(limit), "of %.1f gallon limit", activeAllowance);
-    drawCentered(limit, 116, 1, TFT_LIGHTGREY);
-    M5.Display.fillRoundRect(18, 140, 284, 14, 7, TFT_DARKGREY);
+    drawCentered(limit, 90, 1, TFT_LIGHTGREY);
+    M5.Display.fillRoundRect(18, 106, 284, 12, 6, TFT_DARKGREY);
     const float ratio = constrain(gallonsFor(sessionPulses) / activeAllowance, 0.0F, 1.0F);
-    M5.Display.fillRoundRect(18, 140, static_cast<int>(284 * ratio), 14, 7, ratio > .85F ? TFT_ORANGE : TFT_GREEN);
+    M5.Display.fillRoundRect(18, 106, static_cast<int>(284 * ratio), 12, 6, ratio > .85F ? TFT_ORANGE : TFT_GREEN);
     const bool pumpOn = relays.isOn(Config::PUMP_RELAY);
-    drawCentered(pumpOn ? "WATER ON" : "READY", 157, 1, pumpOn ? TFT_GREEN : TFT_ORANGE);
-    M5.Display.fillRoundRect(24, 174, 272, 52, 12, pumpOn ? TFT_MAROON : 0x0320);
-    M5.Display.drawRoundRect(24, 174, 272, 52, 12, pumpOn ? TFT_RED : TFT_GREEN);
+    // Big touch circle: green START before the water runs, red STOP once it
+    // does. Mirrors the physical button as a backup start/stop control.
+    const uint16_t fill = pumpOn ? TFT_RED : TFT_GREEN;
+    M5.Display.fillCircle(Config::TOUCH_CIRCLE_X, Config::TOUCH_CIRCLE_Y, Config::TOUCH_CIRCLE_RADIUS, fill);
+    M5.Display.drawCircle(Config::TOUCH_CIRCLE_X, Config::TOUCH_CIRCLE_Y, Config::TOUCH_CIRCLE_RADIUS, TFT_WHITE);
+    M5.Display.drawCircle(Config::TOUCH_CIRCLE_X, Config::TOUCH_CIRCLE_Y, Config::TOUCH_CIRCLE_RADIUS - 1, TFT_WHITE);
     M5.Display.setTextDatum(middle_center);
-    M5.Display.setTextSize(2);
-    M5.Display.setTextColor(TFT_WHITE, pumpOn ? TFT_MAROON : 0x0320);
-    M5.Display.drawString(pumpOn ? "PRESS BUTTON TO FINISH" : "PRESS BUTTON TO START", 160, 200);
+    M5.Display.setTextSize(3);
+    M5.Display.setTextColor(pumpOn ? TFT_WHITE : TFT_BLACK, fill);
+    M5.Display.drawString(pumpOn ? "STOP" : "START", Config::TOUCH_CIRCLE_X, Config::TOUCH_CIRCLE_Y);
+    M5.Display.setTextDatum(middle_center);
+    M5.Display.setTextSize(1);
+    M5.Display.setTextColor(pumpOn ? TFT_GREEN : TFT_ORANGE, 0x020E);
+    M5.Display.drawString(pumpOn ? "WATER ON" : "WATER OFF", 62, Config::TOUCH_CIRCLE_Y - 8);
+    M5.Display.setTextColor(TFT_LIGHTGREY, 0x020E);
+    M5.Display.drawString("or press", 258, Config::TOUCH_CIRCLE_Y - 8);
+    M5.Display.drawString("the button", 258, Config::TOUCH_CIRCLE_Y + 6);
   } else if (screenState == ScreenState::CALIBRATION) {
     drawHeader("ADMIN CALIBRATION", TFT_ORANGE);
     drawCentered("DISPENSING", 48, 3, TFT_ORANGE);
@@ -440,6 +451,35 @@ void handleCalibration() {
   }
 }
 
+// Shared by the physical GPIO button and the on-screen touch circle. First
+// activation starts the water; the next one ends the session (pump off).
+void toggleShowerWater(const char* source, const char* endReason) {
+  if (calibrationActive) {
+    Serial.printf("[%s] ignored during calibration\n", source);
+    return;
+  }
+  if (!sessionActive()) {
+    Serial.printf("[%s] ignored; no authorized session\n", source);
+    return;
+  }
+
+  if (relays.isOn(Config::PUMP_RELAY)) {
+    // Second activation: the shower is over. endSession() turns the pump off.
+    Serial.printf("[%s] finish shower\n", source);
+    endSession(endReason);
+    return;
+  }
+  // First activation: start the water.
+  if (!relayReady || !relays.set(Config::PUMP_RELAY, true)) {
+    relayReady = false;
+    Serial.printf("[%s] pump relay write failed\n", source);
+    endSession("RELAY_ERROR");
+    return;
+  }
+  Serial.printf("[%s] pump=on\n", source);
+  screenDirty = true;
+}
+
 void handlePumpButton() {
   const bool pressed = digitalRead(Config::PUMP_BUTTON_PIN) == LOW;
   if (pressed != buttonRawPressed) {
@@ -451,30 +491,24 @@ void handlePumpButton() {
 
   buttonStablePressed = pressed;
   if (!pressed) return;
-  if (calibrationActive) {
-    Serial.println("[BUTTON] ignored during calibration");
-    return;
-  }
-  if (!sessionActive()) {
-    Serial.println("[BUTTON] ignored; no authorized session");
-    return;
-  }
+  toggleShowerWater("BUTTON", "BUTTON");
+}
 
-  if (relays.isOn(Config::PUMP_RELAY)) {
-    // Second press: the shower is over. endSession() turns the pump off.
-    Serial.println("[BUTTON] finish shower");
-    endSession("BUTTON");
-    return;
-  }
-  // First press: start the water.
-  if (!relayReady || !relays.set(Config::PUMP_RELAY, true)) {
-    relayReady = false;
-    Serial.println("[BUTTON] pump relay write failed");
-    endSession("RELAY_ERROR");
-    return;
-  }
-  Serial.println("[BUTTON] pump=on");
-  screenDirty = true;
+// Backup for the physical button: a tap inside the big circle on the ACTIVE
+// screen. Only the press edge counts, and repeat taps are ignored for
+// TOUCH_DEBOUNCE_MS so a bounce or a lingering finger cannot start and
+// immediately end the shower.
+void handleTouchButton() {
+  if (screenState != ScreenState::ACTIVE || !sessionActive()) return;
+  const auto& touch = M5.Touch.getDetail();
+  if (!touch.wasPressed()) return;
+  if (millis() - lastTouchActionMs < Config::TOUCH_DEBOUNCE_MS) return;
+  const int32_t dx = touch.x - Config::TOUCH_CIRCLE_X;
+  const int32_t dy = touch.y - Config::TOUCH_CIRCLE_Y;
+  const int32_t hitRadius = Config::TOUCH_CIRCLE_RADIUS + Config::TOUCH_HIT_MARGIN;
+  if (dx * dx + dy * dy > hitRadius * hitRadius) return;
+  lastTouchActionMs = millis();
+  toggleShowerWater("TOUCH", "TOUCH");
 }
 
 void handleMusicKnob() {
@@ -819,6 +853,7 @@ void loop() {
   serviceI2cRecovery();
   serviceReliability();
   handlePumpButton();
+  handleTouchButton();
   if (Config::HAS_MUSIC) handleMusicKnob();
   handleSerial();
   pollFlow();

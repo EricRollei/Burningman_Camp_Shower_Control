@@ -43,6 +43,12 @@ constexpr uint32_t MUSIC_KNOB_SETTLE_MS = 100;
 // First press starts the water; second press ends the shower.
 constexpr uint8_t PUMP_BUTTON_PIN = 14;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 40;
+// On-screen backup start/stop circle (ACTIVE screen, landscape 320x240).
+constexpr int32_t TOUCH_CIRCLE_X = 160;
+constexpr int32_t TOUCH_CIRCLE_Y = 180;
+constexpr int32_t TOUCH_CIRCLE_RADIUS = 48;
+constexpr int32_t TOUCH_HIT_MARGIN = 12;
+constexpr uint32_t TOUCH_DEBOUNCE_MS = 750;
 // How long the usage summary stays on screen after a shower ends.
 constexpr uint32_t SUMMARY_DISPLAY_MS = 10000;
 

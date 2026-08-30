@@ -70,16 +70,24 @@ counters, `limits`, `membersVersion` and `features`.
 
 ## Session behavior
 
-The Tough touchscreen is not used; the person showering only interacts with
-the RFID reader and the single momentary button on GPIO14.
+The person showering interacts with the RFID reader and the single momentary
+button on GPIO14. The Tough touchscreen offers a backup start/stop control on
+the in-progress screen: a large green **START** circle once a wristband is
+accepted, which becomes a large red **STOP** circle after the water starts.
+A touch inside the circle does exactly what a button press does.
 
 1. At boot, all four relays are explicitly commanded OFF.
 2. An enabled, enrolled wristband opens a shower session with relay 1 off and
-   shows `PRESS BUTTON TO START`.
-3. The first button press starts the water. The screen switches to
-   `PRESS BUTTON TO FINISH` and shows live gallons against the member's limit.
-4. The second button press ends the shower and turns the pump off. Button
-   presses are ignored when no member is authenticated.
+   shows the green **START** circle.
+3. The first button press (or a tap on **START**) starts the water. The circle
+   turns red and reads **STOP**; the screen shows live gallons against the
+   member's limit.
+4. The second button press (or a tap on **STOP**) ends the shower and turns the
+   pump off. Sessions ended from the screen are logged with reason `TOUCH`
+   instead of `BUTTON`. Button presses and touches are ignored when no member
+   is authenticated or during calibration; repeat touches within
+   `TOUCH_DEBOUNCE_MS` (750 ms) are ignored so a bounce cannot start and
+   immediately stop the water.
 5. After a shower ends the screen shows the gallons used and elapsed time for
    10 seconds (`SUMMARY_DISPLAY_MS`), then returns to the ready screen.
 6. If a different enrolled wristband is tapped while a session is open (someone
@@ -107,7 +115,7 @@ are shower 10 gal / 20 min, water fill 10 gal / 60 min, RV fill 100 gal /
 allowance (`allowance_gallons` in `/MEMBERS.CSV`) is a shower-only override;
 `0` means "use the station limit", and fills always use the station limit.
 The Tough's built-in display shows the operational UI to the person using the
-controller; its touch layer is not used.
+controller; its touch layer only serves the backup START/STOP circle.
 
 Both downstream I2C devices are discovered by address at boot, so their
 PaHUB ports may be rearranged without rebuilding the firmware. Missing devices
