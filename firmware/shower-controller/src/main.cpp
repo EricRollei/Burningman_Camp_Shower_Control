@@ -16,6 +16,7 @@
 #include "SessionStorage.h"
 #include "SettingsStore.h"
 #include "SpeakerAudio.h"
+#include "StationDisplay.h"
 #include "UsageLedger.h"
 
 namespace {
@@ -34,6 +35,7 @@ RelayController relays;
 RfidReader rfid;
 I2cHub i2cHub;
 LightShow lightShow;
+StationDisplay stationDisplay;
 
 ScreenState screenState = ScreenState::IDLE;
 char activeUid[21] = {0};
@@ -51,7 +53,6 @@ uint32_t calibrationStartPulses = 0;
 uint32_t calibrationStartMs = 0;
 uint32_t lastBusProbeMs = 0;
 uint32_t buttonChangedMs = 0;
-uint32_t lastTouchActionMs = 0;
 uint32_t lastMusicKnobReadMs = 0;
 uint32_t lastMusicKnobLogMs = 0;
 uint32_t lastMusicStartAttemptMs = 0;
@@ -66,7 +67,6 @@ uint32_t summaryElapsedMs = 0;
 // Camp-wide totals for the wristband that just finished (this station + every
 // other station's last snapshot), shown on the summary screen.
 float summaryTotalGallons = 0.0F;
-float summaryByRole[CampNet::ROLE_COUNT] = {0.0F, 0.0F, 0.0F};
 uint32_t lastRemoteChangeCount = 0;
 bool rfidReady = false;
 bool relayReady = false;
@@ -75,6 +75,9 @@ uint8_t hubAddress = Config::PAHUB_ADDRESS;
 int8_t relayChannel = -1;
 int8_t rfidChannel = -1;
 bool calibrationActive = false;
+bool relayTestActive = false;
+uint8_t relayTestChannel = 0;
+uint32_t relayTestStartMs = 0;
 bool screenDirty = true;
 bool buttonRawPressed = false;
 bool buttonStablePressed = false;
@@ -82,6 +85,8 @@ bool musicStartPending = false;
 bool musicKnobMoving = false;
 bool musicStaticStarted = false;
 bool musicCalibrationActive = false;
+bool summaryReady = false;
+bool summaryLogged = false;
 uint8_t musicCalibrationNextPosition = 0;
 int8_t musicChannel = -1;
 String musicCalibrationMessage = "Ready to calibrate";
@@ -91,9 +96,43 @@ String serialCommand;
 
 bool sessionActive() { return activeUid[0] != '\0'; }
 
+void markRelayFailure() {
+  relays.allOff();
+  relayReady = false;
+}
+
+bool setConfiguredRelay(uint8_t channel, bool on) {
+  if (channel == 0) return true;
+  if (!relayReady || !relays.set(channel, on)) {
+    markRelayFailure();
+    return false;
+  }
+  return true;
+}
+
+void shutdownAllRelays() {
+  if (relayReady && !relays.allOff()) relayReady = false;
+}
+
+bool applyAccessoryPolicy() {
+  const SettingsStore::RelayConfig& config = settings.relayConfig();
+  return !config.accessoryEnabled || config.accessory == 0 ||
+         setConfiguredRelay(config.accessory, true);
+}
+
+void stopPump() {
+  setConfiguredRelay(settings.relayConfig().pump, false);
+}
+
+void stopSessionOutputs() {
+  const SettingsStore::RelayConfig& config = settings.relayConfig();
+  if (!setConfiguredRelay(config.pump, false)) return;
+  setConfiguredRelay(config.charger, false);
+}
+
 uint8_t doorDisplayState() {
   if (sessionActive()) return CampNet::DOOR_IN_USE;
-  if (calibrationActive || !pulseStorage.healthy() || !sessions.healthy() ||
+  if (calibrationActive || relayTestActive || !pulseStorage.healthy() || !sessions.healthy() ||
       !settings.healthy() || !relayReady || !rfidReady) return CampNet::DOOR_UNAVAILABLE;
   return CampNet::DOOR_OPEN;
 }
@@ -134,6 +173,7 @@ float gallonsFor(uint32_t pulses) {
 }
 
 void setMessage(const String& title, const String& body, uint32_t durationMs = 3500) {
+  summaryReady = false;
   messageTitle = title;
   messageBody = body;
   messageUntilMs = millis() + durationMs;
@@ -148,110 +188,36 @@ String uidToHex(const uint8_t* uid, int length) {
   return String(hex);
 }
 
-void drawCentered(const String& text, int y, int size, uint16_t color) {
-  M5.Display.setTextDatum(top_center);
-  M5.Display.setTextSize(size);
-  M5.Display.setTextColor(color);
-  M5.Display.drawString(text, 160, y);
+bool displayReady() {
+  return pulseStorage.healthy() && sessions.healthy() && settings.healthy() &&
+         relayReady && rfidReady;
 }
-
-void drawHeader(const char* label, uint16_t accent = TFT_CYAN) {
-  M5.Display.fillRect(0, 0, 320, 28, 0x0861);
-  M5.Display.setTextDatum(middle_left);
-  M5.Display.setTextSize(1);
-  M5.Display.setTextColor(accent, 0x0861);
-  M5.Display.drawString(label, 12, 14);
-  M5.Display.setTextDatum(middle_right);
-  const bool ready = pulseStorage.healthy() && relayReady && rfidReady;
-  char status[40];
-  snprintf(status, sizeof(status), "%s · %u NET", ready ? "READY" : "SERVICE",
-           static_cast<unsigned>(campNet.peerCount()));
-  M5.Display.setTextColor(ready ? TFT_GREEN : TFT_ORANGE, 0x0861);
-  M5.Display.drawString(status, 308, 14);
-}
-
-const char* roleHeaderLabel() { return Config::ROLE_HEADER_LABELS[Config::STATION_ROLE_VALUE]; }
 
 void drawScreen() {
-  M5.Display.startWrite();
-  M5.Display.fillScreen(0x020E);
+  const bool ready = displayReady();
+  const uint8_t peers = campNet.peerCount();
   if (screenState == ScreenState::IDLE) {
-    drawHeader(roleHeaderLabel());
-    drawCentered("READY WHEN", 52, 3, TFT_WHITE);
-    drawCentered("YOU ARE", 82, 3, TFT_WHITE);
-    M5.Display.fillCircle(160, 145, 34, 0x044A);
-    M5.Display.drawCircle(160, 145, 34, TFT_CYAN);
-    drawCentered("TAP", 128, 2, TFT_CYAN);
-    drawCentered("WRISTBAND", 151, 1, TFT_WHITE);
-    const SettingsStore::RoleLimits& limits = settings.roleLimits(Config::STATION_ROLE_VALUE);
-    char footer[64];
-    snprintf(footer, sizeof(footer), "%.0f gallon · %u minute limit per %s", limits.gallons,
-             limits.minutes, Config::ROLE_SESSION_NOUNS[Config::STATION_ROLE_VALUE]);
-    drawCentered(footer, 214, 1, TFT_LIGHTGREY);
+    stationDisplay.drawIdle(Config::STATION_ROLE_VALUE, ready, peers);
   } else if (screenState == ScreenState::ACTIVE) {
-    drawHeader(Config::ROLE_ACTIVE_LABELS[Config::STATION_ROLE_VALUE], TFT_GREEN);
-    drawCentered(activeName, 32, 2, TFT_WHITE);
-    char amount[32];
-    snprintf(amount, sizeof(amount), "%.2f gal", gallonsFor(sessionPulses));
-    drawCentered(amount, 54, 4, TFT_CYAN);
-    char limit[40];
-    snprintf(limit, sizeof(limit), "of %.1f gallon limit", activeAllowance);
-    drawCentered(limit, 90, 1, TFT_LIGHTGREY);
-    M5.Display.fillRoundRect(18, 106, 284, 12, 6, TFT_DARKGREY);
-    const float ratio = constrain(gallonsFor(sessionPulses) / activeAllowance, 0.0F, 1.0F);
-    M5.Display.fillRoundRect(18, 106, static_cast<int>(284 * ratio), 12, 6, ratio > .85F ? TFT_ORANGE : TFT_GREEN);
-    const bool pumpOn = relays.isOn(Config::PUMP_RELAY);
-    // Big touch circle: green START before the water runs, red STOP once it
-    // does. Mirrors the physical button as a backup start/stop control.
-    const uint16_t fill = pumpOn ? TFT_RED : TFT_GREEN;
-    M5.Display.fillCircle(Config::TOUCH_CIRCLE_X, Config::TOUCH_CIRCLE_Y, Config::TOUCH_CIRCLE_RADIUS, fill);
-    M5.Display.drawCircle(Config::TOUCH_CIRCLE_X, Config::TOUCH_CIRCLE_Y, Config::TOUCH_CIRCLE_RADIUS, TFT_WHITE);
-    M5.Display.drawCircle(Config::TOUCH_CIRCLE_X, Config::TOUCH_CIRCLE_Y, Config::TOUCH_CIRCLE_RADIUS - 1, TFT_WHITE);
-    M5.Display.setTextDatum(middle_center);
-    M5.Display.setTextSize(3);
-    M5.Display.setTextColor(pumpOn ? TFT_WHITE : TFT_BLACK, fill);
-    M5.Display.drawString(pumpOn ? "STOP" : "START", Config::TOUCH_CIRCLE_X, Config::TOUCH_CIRCLE_Y);
-    M5.Display.setTextDatum(middle_center);
-    M5.Display.setTextSize(1);
-    M5.Display.setTextColor(pumpOn ? TFT_GREEN : TFT_ORANGE, 0x020E);
-    M5.Display.drawString(pumpOn ? "WATER ON" : "WATER OFF", 62, Config::TOUCH_CIRCLE_Y - 8);
-    M5.Display.setTextColor(TFT_LIGHTGREY, 0x020E);
-    M5.Display.drawString("or press", 258, Config::TOUCH_CIRCLE_Y - 8);
-    M5.Display.drawString("the button", 258, Config::TOUCH_CIRCLE_Y + 6);
+    const bool pumpOn = relays.isOn(settings.relayConfig().pump);
+    const float burnTotal = sessions.gallonsFor(activeUid) +
+                            ledger.remoteGallonsFor(activeUid);
+    stationDisplay.drawSession(Config::STATION_ROLE_VALUE, activeName, burnTotal,
+                               gallonsFor(sessionPulses), millis() - sessionStartMs,
+                               pumpOn, ready, peers);
   } else if (screenState == ScreenState::CALIBRATION) {
-    drawHeader("ADMIN CALIBRATION", TFT_ORANGE);
-    drawCentered("DISPENSING", 48, 3, TFT_ORANGE);
     const uint32_t pulses = flow.totalPulses() - calibrationStartPulses;
-    drawCentered(String(pulses) + " pulses", 100, 3, TFT_WHITE);
-    drawCentered("Stop and enter the known volume", 152, 1, TFT_LIGHTGREY);
-    drawCentered("from the admin page", 171, 1, TFT_LIGHTGREY);
-    drawCentered("Pump is ON", 211, 1, TFT_GREEN);
+    stationDisplay.drawCalibration(pulses, ready, peers);
   } else {
-    drawHeader(roleHeaderLabel());
-    if (summaryElapsedMs > 0) {
-      // End-of-session summary: this session, then the wristband's camp-wide
-      // total across showers and fill stations.
-      drawCentered(messageTitle, 36, 3, TFT_CYAN);
-      const uint32_t seconds = summaryElapsedMs / 1000UL;
-      char line[64];
-      snprintf(line, sizeof(line), "%.2f gal · %lu min %02lu sec", summaryGallons,
-               static_cast<unsigned long>(seconds / 60UL), static_cast<unsigned long>(seconds % 60UL));
-      drawCentered(line, 72, 2, TFT_GREEN);
-      drawCentered("YOUR TOTAL THIS BURN", 108, 1, TFT_LIGHTGREY);
-      snprintf(line, sizeof(line), "%.1f gal", summaryTotalGallons);
-      drawCentered(line, 124, 4, TFT_WHITE);
-      snprintf(line, sizeof(line), "Showers %.1f · Water %.1f · RV %.1f",
-               summaryByRole[CampNet::ROLE_SHOWER], summaryByRole[CampNet::ROLE_WATER_FILL],
-               summaryByRole[CampNet::ROLE_RV_FILL]);
-      drawCentered(line, 172, 1, TFT_CYAN);
-      drawCentered(messageBody, 196, 1, TFT_WHITE);
+    if (summaryReady) {
+      stationDisplay.drawSummary(Config::STATION_ROLE_VALUE, summaryGallons,
+                                 summaryTotalGallons, summaryElapsedMs,
+                                 summaryLogged, ready, peers);
     } else {
-      drawCentered(messageTitle, 66, 3, messageTitle == "NOT AUTHORIZED" ? TFT_ORANGE : TFT_CYAN);
-      drawCentered(messageBody, 122, 2, TFT_WHITE);
+      stationDisplay.drawMessage(Config::STATION_ROLE_VALUE, messageTitle,
+                                 messageBody, ready, peers);
     }
-    drawCentered("Returning to ready…", 220, 1, TFT_LIGHTGREY);
   }
-  M5.Display.endWrite();
   screenDirty = false;
 }
 
@@ -267,7 +233,7 @@ void discoverI2cDevices() {
   if (!relayReady) {
     relayChannel = i2cHub.findDevice(Config::RELAY_ADDRESS);
     relayReady = relayChannel >= 0 && relays.begin(Wire, Config::RELAY_ADDRESS, &i2cHub, relayChannel);
-    if (relayReady) relays.allOff();
+    if (relayReady && !applyAccessoryPolicy()) relayReady = false;
   }
   if (!rfidReady) {
     rfidChannel = i2cHub.findDevice(Config::RFID_ADDRESS);
@@ -277,7 +243,8 @@ void discoverI2cDevices() {
 
 void serviceI2cRecovery() {
   if ((hubReady && relayReady && rfidReady) ||
-      millis() - lastBusProbeMs < 5000 || sessionActive() || calibrationActive) return;
+      millis() - lastBusProbeMs < 5000 || sessionActive() || calibrationActive ||
+      relayTestActive) return;
   lastBusProbeMs = millis();
   discoverI2cDevices();
 }
@@ -290,13 +257,9 @@ bool flushPulses() {
   return true;
 }
 
-void stopPump() {
-  if (relayReady && !relays.allOff()) relayReady = false;
-}
-
 void endSession(const char* reason) {
   if (!sessionActive()) return;
-  stopPump();
+  stopSessionOutputs();
   const bool rawLogged = flushPulses() && pulseStorage.endTag(activeUid);
   const uint32_t endMs = millis();
   summaryGallons = gallonsFor(sessionPulses);
@@ -307,11 +270,8 @@ void endSession(const char* reason) {
   const bool logged = rawLogged && sessionLogged;
   // Camp-wide total: this station's completed sessions (now including this
   // one) plus the latest snapshot from every other station.
-  for (uint8_t role = 0; role < CampNet::ROLE_COUNT; ++role) {
-    summaryByRole[role] = ledger.remoteGallonsByRole(activeUid, role);
-  }
-  summaryByRole[Config::STATION_ROLE_VALUE] += sessions.gallonsFor(activeUid);
-  summaryTotalGallons = summaryByRole[0] + summaryByRole[1] + summaryByRole[2];
+  summaryTotalGallons = sessions.gallonsFor(activeUid) +
+                        ledger.remoteGallonsFor(activeUid);
   campNet.markUsageDirty();
   Serial.printf("[SESSION] end uid=%s pulses=%lu gallons=%.4f reason=%s logged=%s total=%.2f\n",
                 activeUid, static_cast<unsigned long>(sessionPulses), summaryGallons,
@@ -319,6 +279,8 @@ void endSession(const char* reason) {
   activeUid[0] = '\0'; activeName[0] = '\0'; pendingPulses = 0; sessionPulses = 0;
   setMessage(logged ? Config::ROLE_COMPLETE_LABELS[Config::STATION_ROLE_VALUE] : "LOGGING ERROR",
              logged ? "Thank you!" : "Tell a camp admin", Config::SUMMARY_DISPLAY_MS);
+  summaryLogged = logged;
+  summaryReady = true;
 }
 
 void startSession(const String& uid) {
@@ -334,9 +296,7 @@ void startSession(const String& uid) {
     return;
   }
   // Authentication opens a session; the physical button starts water flow.
-  if (!relayReady || !relays.set(Config::PUMP_RELAY, false)) {
-    relayReady = false;
-    stopPump();
+  if (!setConfiguredRelay(settings.relayConfig().pump, false)) {
     summaryGallons = 0.0F; summaryElapsedMs = 0;
     setMessage("UNAVAILABLE", "Pump control needs service");
     return;
@@ -347,16 +307,29 @@ void startSession(const String& uid) {
   activeTimeoutMs = effectiveTimeoutMs();
   pendingPulses = 0; sessionPulses = 0; sessionStartMs = millis(); lastLogMs = millis();
   if (!pulseStorage.selectTag(activeUid)) {
-    stopPump();
+    stopSessionOutputs();
     activeUid[0] = '\0';
+    activeName[0] = '\0';
+    summaryGallons = 0.0F;
+    summaryElapsedMs = 0;
     setMessage("UNAVAILABLE", "Could not start usage log");
+    return;
+  }
+  if (!setConfiguredRelay(settings.relayConfig().charger, true)) {
+    stopSessionOutputs();
+    pulseStorage.endTag(activeUid);
+    activeUid[0] = '\0';
+    activeName[0] = '\0';
+    summaryGallons = 0.0F;
+    summaryElapsedMs = 0;
+    setMessage("UNAVAILABLE", "Phone charger control needs service");
     return;
   }
   screenState = ScreenState::ACTIVE;
   screenDirty = true;
   Serial.printf("[SESSION] start uid=%s name=%s allowance=%.2f timeout_min=%lu relay=%u pump=off\n",
                 activeUid, activeName, activeAllowance,
-                static_cast<unsigned long>(activeTimeoutMs / 60000UL), Config::PUMP_RELAY);
+                static_cast<unsigned long>(activeTimeoutMs / 60000UL), settings.relayConfig().pump);
 }
 
 void pollFlow() {
@@ -373,7 +346,7 @@ void pollFlow() {
 }
 
 void pollRfid() {
-  if (!rfidReady || millis() - lastRfidPollMs < 80) return;
+  if (!rfidReady || relayTestActive || millis() - lastRfidPollMs < 80) return;
   lastRfidPollMs = millis();
   uint8_t uidBytes[10];
   const int length = rfid.readUid(uidBytes, sizeof(uidBytes));
@@ -403,9 +376,11 @@ void pollRfid() {
 
 void handleCalibration() {
   if (admin.takeCalibrationStartRequest()) {
-    if (sessionActive()) {
+    if (relayTestActive) {
+      admin.reportCalibration(false, 0, "Finish the relay test first");
+    } else if (sessionActive()) {
       admin.reportCalibration(false, 0, "Finish the active shower first");
-    } else if (!relayReady || !relays.set(Config::PUMP_RELAY, true)) {
+    } else if (!setConfiguredRelay(settings.relayConfig().pump, true)) {
       stopPump();
       admin.reportCalibration(false, 0, "Pump control failed");
     } else {
@@ -451,8 +426,39 @@ void handleCalibration() {
   }
 }
 
-// Shared by the physical GPIO button and the on-screen touch circle. First
-// activation starts the water; the next one ends the session (pump off).
+void handleRelayAdmin() {
+  if (admin.takeRelayPolicyApplyRequest() && relayReady) {
+    shutdownAllRelays();
+    if (relayReady) applyAccessoryPolicy();
+  }
+
+  uint8_t requestedChannel = 0;
+  if (admin.takeRelayTestStartRequest(requestedChannel) && !sessionActive() &&
+      !calibrationActive && !relayTestActive && relayReady) {
+    shutdownAllRelays();
+    if (relayReady && setConfiguredRelay(requestedChannel, true)) {
+      relayTestActive = true;
+      relayTestChannel = requestedChannel;
+      relayTestStartMs = millis();
+      Serial.printf("[RELAY] test channel=%u duration_ms=%lu\n", requestedChannel,
+                    static_cast<unsigned long>(Config::RELAY_TEST_MS));
+    }
+  }
+
+  const bool stopRequested = admin.takeRelayTestStopRequest();
+  const bool timedOut = relayTestActive &&
+                        millis() - relayTestStartMs >= Config::RELAY_TEST_MS;
+  if (relayTestActive && (stopRequested || timedOut)) {
+    shutdownAllRelays();
+    relayTestActive = false;
+    relayTestChannel = 0;
+    if (relayReady) applyAccessoryPolicy();
+    Serial.printf("[RELAY] test stopped reason=%s\n", timedOut ? "timeout" : "admin");
+  }
+}
+
+// The physical GPIO button is the only member-facing water control. The first
+// press starts the water; the next one ends the session (pump off).
 void toggleShowerWater(const char* source, const char* endReason) {
   if (calibrationActive) {
     Serial.printf("[%s] ignored during calibration\n", source);
@@ -463,15 +469,14 @@ void toggleShowerWater(const char* source, const char* endReason) {
     return;
   }
 
-  if (relays.isOn(Config::PUMP_RELAY)) {
+  if (relays.isOn(settings.relayConfig().pump)) {
     // Second activation: the shower is over. endSession() turns the pump off.
     Serial.printf("[%s] finish shower\n", source);
     endSession(endReason);
     return;
   }
   // First activation: start the water.
-  if (!relayReady || !relays.set(Config::PUMP_RELAY, true)) {
-    relayReady = false;
+  if (!setConfiguredRelay(settings.relayConfig().pump, true)) {
     Serial.printf("[%s] pump relay write failed\n", source);
     endSession("RELAY_ERROR");
     return;
@@ -492,23 +497,6 @@ void handlePumpButton() {
   buttonStablePressed = pressed;
   if (!pressed) return;
   toggleShowerWater("BUTTON", "BUTTON");
-}
-
-// Backup for the physical button: a tap inside the big circle on the ACTIVE
-// screen. Only the press edge counts, and repeat taps are ignored for
-// TOUCH_DEBOUNCE_MS so a bounce or a lingering finger cannot start and
-// immediately end the shower.
-void handleTouchButton() {
-  if (screenState != ScreenState::ACTIVE || !sessionActive()) return;
-  const auto& touch = M5.Touch.getDetail();
-  if (!touch.wasPressed()) return;
-  if (millis() - lastTouchActionMs < Config::TOUCH_DEBOUNCE_MS) return;
-  const int32_t dx = touch.x - Config::TOUCH_CIRCLE_X;
-  const int32_t dy = touch.y - Config::TOUCH_CIRCLE_Y;
-  const int32_t hitRadius = Config::TOUCH_CIRCLE_RADIUS + Config::TOUCH_HIT_MARGIN;
-  if (dx * dx + dy * dy > hitRadius * hitRadius) return;
-  lastTouchActionMs = millis();
-  toggleShowerWater("TOUCH", "TOUCH");
 }
 
 void handleMusicKnob() {
@@ -662,6 +650,15 @@ void handleMusicKnob() {
   }
 }
 
+void reportAdminState() {
+  admin.reportHardware(hubReady, relayReady, rfidReady);
+  admin.reportRelays(relays.state(), relayTestActive, relayTestChannel);
+  admin.reportSession(activeName, sessionActive() ? gallonsFor(sessionPulses) : 0.0F,
+                      sessionActive() ? activeAllowance : 0.0F,
+                      relayReady && relays.isOn(settings.relayConfig().pump),
+                      doorDisplayState());
+}
+
 void serviceReliability() {
   const uint32_t now = millis();
 
@@ -684,17 +681,14 @@ void serviceReliability() {
     }
   }
 
-  admin.reportHardware(hubReady, relayReady, rfidReady);
-  admin.reportSession(activeName, sessionActive() ? gallonsFor(sessionPulses) : 0.0F,
-                      sessionActive() ? activeAllowance : 0.0F,
-                      relayReady && relays.isOn(Config::PUMP_RELAY), doorDisplayState());
+  reportAdminState();
   // A remote END SESSION over CampNet can only stop water, never start it.
   if (admin.takeEndSessionRequest() && sessionActive()) endSession("REMOTE");
   if (admin.takeSpeakerSearchRequest() && Config::HAS_MUSIC) speakerAudio.requestDiscovery();
   if (admin.takeRebootRequest()) {
     Serial.println("[SYSTEM] reboot requested from admin page");
     if (sessionActive()) endSession("REBOOT");
-    stopPump();
+    shutdownAllRelays();
     admin.handle();  // let the HTTP response flush before restarting
     delay(250);
     ESP.restart();
@@ -729,6 +723,11 @@ void printStatus() {
                 activeAllowance, relays.state(), pulseStorage.healthy() ? "ok" : "fail",
                 hubReady ? "ok" : "fail", hubAddress, relayChannel,
                 rfidReady ? "ok" : "fail", rfidChannel, settings.pulsesPerGallon());
+  const SettingsStore::RelayConfig& relayConfig = settings.relayConfig();
+  Serial.printf("[RELAY] pump=%u charger=%u accessory=%u accessory_enabled=%s state=0x%02X test=%u\n",
+                relayConfig.pump, relayConfig.charger, relayConfig.accessory,
+                relayConfig.accessoryEnabled ? "yes" : "no", relays.state(),
+                relayTestActive ? relayTestChannel : 0);
   Serial.printf("[MUSIC] knob=%u/4095 channel=%d calibrated=%s speaker=%s speaker_volume=%u%% playback=%s pcm_bass=%u pcm_mid=%u pcm_treble=%u pcm_volume=%u\n",
                 musicKnobRaw, musicChannel,
                 settings.musicKnobCalibrated() ? "yes" : "no",
@@ -740,7 +739,7 @@ void printStatus() {
 
 void processSerialCommand(String command) {
   command.trim(); command.toLowerCase();
-  if (command == "off") { if (sessionActive()) endSession("SERIAL"); else { stopPump(); setMessage("PUMP OFF", "Safety stop complete"); } }
+  if (command == "off") { if (sessionActive()) endSession("SERIAL"); else { stopSessionOutputs(); setMessage("WATER OFF", "Pump and charger stopped"); } }
   else if (command == "end") endSession("SERIAL");
   else if (command == "status") printStatus();
   else if (command == "tone") Serial.println(speakerAudio.playTestTone() ? "[AUDIO] tone requested" : "[AUDIO] speaker not connected");
@@ -774,7 +773,7 @@ void setup() {
   M5.Power.setExtOutput(true);
   delay(150);
   M5.Display.setRotation(1);
-  M5.Display.setTextWrap(false);
+  stationDisplay.begin();
   pinMode(Config::PUMP_BUTTON_PIN, INPUT_PULLUP);
   buttonRawPressed = digitalRead(Config::PUMP_BUTTON_PIN) == LOW;
   buttonStablePressed = buttonRawPressed;
@@ -833,6 +832,10 @@ void setup() {
   }
   Serial.printf("[I2C] pahub_0x%02X=%s relay_0x26=ch%d rfid_0x28=ch%d\n",
                 hubAddress, hubReady?"yes":"no", relayChannel, rfidChannel);
+  const SettingsStore::RelayConfig& relayConfig = settings.relayConfig();
+  Serial.printf("[RELAY] pump=%u charger=%u accessory=%u accessory_enabled=%s state=0x%02X\n",
+                relayConfig.pump, relayConfig.charger, relayConfig.accessory,
+                relayConfig.accessoryEnabled ? "yes" : "no", relays.state());
   Serial.println("[HELP] commands: off end status tone play play1..play9 stop");
   screenDirty = true;
 
@@ -846,14 +849,17 @@ void setup() {
 void loop() {
   esp_task_wdt_reset();
   M5.update();
+  // Refresh lifecycle truth before WebServer or remote COMMAND handlers can
+  // accept an idle-only relay action.
+  reportAdminState();
   admin.handle();
   if (Config::HAS_MUSIC) speakerAudio.handle();
   if (Config::HAS_LED_STRIP) lightShow.handle(speakerAudio);
   serviceCampNet();
   serviceI2cRecovery();
+  handleRelayAdmin();
   serviceReliability();
   handlePumpButton();
-  handleTouchButton();
   if (Config::HAS_MUSIC) handleMusicKnob();
   handleSerial();
   pollFlow();
@@ -869,10 +875,18 @@ void loop() {
   if (screenState == ScreenState::MESSAGE && static_cast<int32_t>(millis() - messageUntilMs) >= 0) {
     summaryGallons = 0.0F;
     summaryElapsedMs = 0;
+    summaryReady = false;
     screenState = ScreenState::IDLE;
     screenDirty = true;
   }
+  static uint32_t lastActiveScreenTickMs = 0;
+  if (screenState == ScreenState::ACTIVE &&
+      relays.isOn(settings.relayConfig().pump) &&
+      millis() - lastActiveScreenTickMs >= 1000) {
+    lastActiveScreenTickMs = millis();
+    screenDirty = true;
+  }
   static uint32_t lastDrawMs = 0;
-  if (screenDirty && millis() - lastDrawMs >= 100) { drawScreen(); lastDrawMs = millis(); }
+  if (screenDirty && millis() - lastDrawMs >= 250) { drawScreen(); lastDrawMs = millis(); }
   delay(5);
 }

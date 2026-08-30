@@ -49,6 +49,14 @@ bool SettingsStore::begin() {
         if (parsed >= 0 && parsed <= 100) {
           speakerVolumePercent_ = static_cast<uint8_t>(parsed);
         }
+      } else if (key == "relay_pump") {
+        relayConfig_.pump = static_cast<uint8_t>(value.toInt());
+      } else if (key == "relay_charger") {
+        relayConfig_.charger = static_cast<uint8_t>(value.toInt());
+      } else if (key == "relay_accessory") {
+        relayConfig_.accessory = static_cast<uint8_t>(value.toInt());
+      } else if (key == "accessory_enabled") {
+        relayConfig_.accessoryEnabled = value.toInt() != 0;
       } else if (key.startsWith("limit_") && key.endsWith("_gal")) {
         const String roleKey = key.substring(6, key.length() - 4);
         const float parsed = value.toFloat();
@@ -104,6 +112,7 @@ bool SettingsStore::begin() {
   }
 
   if (!loadedCalibration) pulsesPerGallon_ = Config::DEFAULT_PULSES_PER_GALLON;
+  if (!relayConfigValid(relayConfig_)) relayConfig_ = RelayConfig();
   healthy_ = true;
   if (!hasPassword_) {
     for (uint8_t& value : salt_) value = static_cast<uint8_t>(esp_random());
@@ -179,6 +188,33 @@ bool SettingsStore::setSpeakerVolumePercent(uint8_t percent) {
   speakerVolumePercent_ = percent;
   if (save()) return true;
   speakerVolumePercent_ = previous;
+  return false;
+}
+
+bool SettingsStore::relayConfigValid(const RelayConfig& config) {
+  if (config.pump < 1 || config.pump > 4 || config.charger > 4 ||
+      config.accessory > 4) return false;
+  if (config.charger != 0 && config.charger == config.pump) return false;
+  if (config.accessory != 0 &&
+      (config.accessory == config.pump || config.accessory == config.charger)) return false;
+  return true;
+}
+
+bool SettingsStore::setRelayConfig(const RelayConfig& config) {
+  if (!healthy_ || !relayConfigValid(config)) return false;
+  const RelayConfig previous = relayConfig_;
+  relayConfig_ = config;
+  if (save()) return true;
+  relayConfig_ = previous;
+  return false;
+}
+
+bool SettingsStore::setAccessoryEnabled(bool enabled) {
+  if (!healthy_) return false;
+  const bool previous = relayConfig_.accessoryEnabled;
+  relayConfig_.accessoryEnabled = enabled;
+  if (save()) return true;
+  relayConfig_.accessoryEnabled = previous;
   return false;
 }
 
@@ -304,6 +340,10 @@ bool SettingsStore::save() {
   file.println("key,value");
   file.printf("calibration_ppg,%.6f\n", pulsesPerGallon_);
   file.printf("speaker_volume_percent,%u\n", speakerVolumePercent_);
+  file.printf("relay_pump,%u\n", relayConfig_.pump);
+  file.printf("relay_charger,%u\n", relayConfig_.charger);
+  file.printf("relay_accessory,%u\n", relayConfig_.accessory);
+  file.printf("accessory_enabled,%u\n", relayConfig_.accessoryEnabled ? 1 : 0);
   if (musicKnobCalibrated_) {
     for (uint8_t i = 0; i < Config::MUSIC_KNOB_POSITION_COUNT; ++i) {
       file.printf("music_knob_%u,%u\n", i, musicKnobPositions_[i]);

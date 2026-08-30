@@ -55,14 +55,22 @@ One pass through this list before the burn. Check items off as they pass.
       instead of the control.
 - [ ] **Door display:** confirm the OLED sign still tracks
       OPEN / IN_USE / UNAVAILABLE through a full session.
-- [ ] **Touch START/STOP backup:** tap a wristband; a large green START circle
-      appears. Tap the circle once: pump relay clicks on, circle turns red and
-      reads STOP. Tap STOP: pump off, summary screen, session logged with
-      reason `TOUCH`. Then repeat mixing inputs (touch START, button finish;
-      button start, touch STOP). Confirm a tap outside the circle, a tap on the
-      idle/summary screens, and a rapid double-tap on START each do nothing
-      extra (water stays on after the double-tap). Confirm the touch does
-      nothing while no session is open or during calibration.
+- [ ] **Physical-button-only control:** tap an authorized wristband; the Big
+      Top logged-in screen says `PRESS BUTTON TO START WATER` and the pump is
+      off. Tap anywhere on every screen and confirm no relay or session action.
+      Press GPIO14 once: pump on and the footer changes to `PRESS BUTTON WHEN
+      DONE`. Press it again: pump off, summary screen, reason `BUTTON`. Confirm
+      presses without an authorized session and during calibration do nothing.
+- [ ] **Big Top screen flow and readability:** in direct sun and at night,
+      inspect idle, logged-in, dispensing, summary, denial, unavailable, and
+      calibration screens. Confirm the red/cream sunburst, gold frame, bulbs,
+      circus headlines, live gallons, elapsed time, and ticket summary are
+      legible without clipped text or visible flicker. Repeat with a long
+      member name and a member name containing a non-ASCII character.
+- [ ] **Role-specific fill screens:** flash `water_fill` and `rv_fill`; confirm
+      the headers, idle prompts, open labels, used-this-fill copy, and thanks
+      messages refer to jugs and RV filling as appropriate. Complete one fill
+      on each and confirm the same physical-button-only lifecycle and summary.
 
 ## CampNet (branch `worktree-camp-network`)
 
@@ -74,17 +82,17 @@ One pass through this list before the burn. Check items off as they pass.
 - [ ] **Door sign tracks its own shower only:** start a session on Shower 1 —
       door 1 flips to IN USE within a second, door 2 stays OPEN. Power off
       Shower 1's Tough — door 1 shows OFFLINE within 3 s.
-- [ ] **Peers visible:** every Tough's screen header shows `READY · 3 NET`
+- [ ] **Peers visible:** every Tough's screen header shows `READY - 3 NET`
       with all four powered; the admin home screen shows a tile for each of
       the other three and Camp settings lists them as online.
 - [ ] **Enroll anywhere:** enroll a wristband on the water-fill station, tap
       it on a shower within 30 s — session opens.
 - [ ] **Camp-wide total on the summary screen:** finish a shower, then a
-      water fill with the same wristband — the fill's summary shows the shower
-      gallons under "Showers" and the sum under "YOUR TOTAL THIS BURN".
+      water fill with the same wristband — the fill's ticket shows its session
+      gallons and a total that includes the earlier shower.
 - [ ] **Limits sync:** change the RV fill limit on Shower 1's Camp settings page; the
-      RV station's idle footer updates within 30 s and an RV fill ends at the
-      new limit.
+      RV station adopts it within 30 s and an RV fill ends at the new limit,
+      even though limit text is intentionally absent from the member display.
 - [ ] **Ledger survives reboot:** power-cycle a Tough with the others off;
       the admin Water use page still shows the other stations' gallons
       (`/NETUSAGE.CSV` on the SD card).
@@ -109,3 +117,34 @@ One pass through this list before the burn. Check items off as they pass.
       packet with a wrong secret is ignored and `[HEALTH]` shows no action.
 
 ## (add in-flight work below)
+
+## Admin relay and power configuration
+
+- [ ] **Upgrade defaults are inert:** boot with an existing `SETTINGS.CSV` that
+      has no relay keys. Pump remains mapped to relay 1; charger and accessory
+      show **Not assigned**, and no auxiliary relay energizes.
+- [ ] **Mapping validation and persistence:** assign pump, charger, and
+      accessory to three different channels. Duplicate assignments are
+      rejected. Reboot and confirm the mappings and accessory enabled state
+      survive.
+- [ ] **Accessory policy:** with the accessory load connected, toggle it off
+      and on from the local station's page and from another station's page
+      (tap twice to confirm). Confirm the
+      choice persists across reboot and the commanded/unmonitored label does
+      not claim load feedback.
+- [ ] **Authorized charger lifecycle:** scan an authorized wristband and
+      confirm the charger relay turns on before START is pressed while the pump
+      remains off. Confirm charger and pump are off after BUTTON, LIMIT,
+      TIMEOUT, HANDOFF, REMOTE, REBOOT, SD_ERROR, and RELAY_ERROR exits, while
+      the enabled accessory rail remains on.
+- [ ] **Five-second raw tests:** while idle, test each channel from the
+      Relay & power card (tap twice) and confirm only
+      the selected channel energizes, automatically stops within five seconds,
+      and restores accessory power. Repeat using immediate Stop and with the
+      browser disconnected mid-test. Confirm tests and remapping are rejected
+      during a session or flow calibration.
+- [ ] **Relay recovery:** disconnect and reconnect the 4Relay module while
+      idle. Confirm health changes to DOWN, recovery starts from all-off, and
+      the configured accessory state is restored. Verify the UI reports relay
+      state as commanded and downstream pump/charger/LED/display loads as
+      unmonitored.

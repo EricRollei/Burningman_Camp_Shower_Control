@@ -37,6 +37,10 @@ class AdminServer {
   void reportMusicKnob(uint16_t raw, int8_t channel, bool calibrationActive,
                        uint8_t nextPosition, const String& message);
   void reportHardware(bool hubReady, bool relayReady, bool rfidReady);
+  void reportRelays(uint8_t state, bool testActive, uint8_t testChannel);
+  bool takeRelayPolicyApplyRequest();
+  bool takeRelayTestStartRequest(uint8_t& channel);
+  bool takeRelayTestStopRequest();
   // Live session state for telemetry; activeName is "" when idle.
   void reportSession(const char* activeName, float sessionGallons, float sessionLimit,
                      bool pumpOn, uint8_t doorState);
@@ -106,6 +110,13 @@ class AdminServer {
   bool hubReady_ = false;
   bool relayReady_ = false;
   bool rfidReady_ = false;
+  uint8_t relayState_ = 0;
+  bool relayTestActive_ = false;
+  uint8_t relayTestChannel_ = 0;
+  bool relayPolicyApplyRequested_ = false;
+  bool relayTestStartRequested_ = false;
+  bool relayTestStopRequested_ = false;
+  uint8_t requestedRelayTestChannel_ = 0;
   char activeName_[33] = {0};
   float sessionGallons_ = 0.0F;
   float sessionLimit_ = 0.0F;

@@ -51,10 +51,10 @@ What travels over the link (`firmware/shared/CampNetProtocol.h`):
 Every Tough keeps the latest `USAGE` snapshot from each other station in
 `/NETUSAGE.CSV` (written at most every 15 s). A wristband's camp-wide total is
 this station's own sessions plus those snapshots, so the summary screen after
-a shower or a fill shows **this session**, **total this burn**, and the split
-between showers, water fill and RV fill. Snapshots are idempotent, so a lost
-packet is healed by the next one and a rebooted station has full totals again
-within about 10 s of hearing its peers.
+a shower or a fill shows **this session** and **total this burn**. The admin
+dashboard retains the per-role split between showers, water fill and RV fill.
+Snapshots are idempotent, so a lost packet is healed by the next one and a
+rebooted station has full totals again within about 10 s of hearing its peers.
 
 Members and limits use version-numbered last-writer-wins: a local edit bumps
 the version past anything heard on the air and broadcasts; a newer version
@@ -63,7 +63,7 @@ the same version (for example two fresh SD cards each with their own
 enrollments) are merged by union so no wristband disappears. Versions live in
 `/MEMBERS.VER` and `SETTINGS.CSV` (`limits_version`).
 
-The header of every screen shows `READY · n NET`, where `n` is the number of
+The header of every screen shows `READY - n NET`, where `n` is the number of
 other stations heard in the last 15 s. The admin page's home screen has a
 tile per peer and its **Camp settings** page lists each one with its
 last-seen time; `/api/status` exposes `peers`, `net` counters, `limits`,
@@ -71,24 +71,21 @@ last-seen time; `/api/status` exposes `peers`, `net` counters, `limits`,
 
 ## Session behavior
 
-The person showering interacts with the RFID reader and the single momentary
-button on GPIO14. The Tough touchscreen offers a backup start/stop control on
-the in-progress screen: a large green **START** circle once a wristband is
-accepted, which becomes a large red **STOP** circle after the water starts.
-A touch inside the circle does exactly what a button press does.
+The person showering or filling interacts with the RFID reader and the single
+momentary button on GPIO14. The Tough touchscreen is display-only; touching
+the idle, active, message, calibration, or summary screen never operates a
+relay or changes a session.
 
-1. At boot, all four relays are explicitly commanded OFF.
-2. An enabled, enrolled wristband opens a shower session with relay 1 off and
-   shows the green **START** circle.
-3. The first button press (or a tap on **START**) starts the water. The circle
-   turns red and reads **STOP**; the screen shows live gallons against the
-   member's limit.
-4. The second button press (or a tap on **STOP**) ends the shower and turns the
-   pump off. Sessions ended from the screen are logged with reason `TOUCH`
-   instead of `BUTTON`. Button presses and touches are ignored when no member
-   is authenticated or during calibration; repeat touches within
-   `TOUCH_DEBOUNCE_MS` (750 ms) are ignored so a bounce cannot start and
-   immediately stop the water.
+1. At boot, all four relays are explicitly commanded OFF. After settings load,
+   the configured accessory rail is restored if it is enabled.
+2. An enabled, enrolled wristband opens a shower session with the configured
+   pump relay off, turns on the configured phone-charger relay, and shows the
+   member's name, burn total, and **PRESS BUTTON TO START WATER**.
+3. The first physical button press starts the water. The screen shows live
+   gallons, elapsed time, and **PRESS BUTTON WHEN DONE**.
+4. The second physical button press ends the shower and turns the pump off.
+   Button presses are ignored when no member is authenticated or during
+   calibration.
 5. After a shower ends the screen shows the gallons used and elapsed time for
    10 seconds (`SUMMARY_DISPLAY_MS`), then returns to the ready screen.
 6. If a different enrolled wristband is tapped while a session is open (someone
@@ -97,8 +94,9 @@ A touch inside the circle does exactly what a button press does.
    never end someone else's shower; they only show `NOT AUTHORIZED`.
 7. The shower also ends at its per-user gallon limit (10 gallons by default)
    or a 20-minute safety timeout.
-8. Every exit path commands all relays OFF and appends a completed record to
-   `/SESSIONS.CSV`; `/PULSES.CSV` remains the raw audit log.
+8. Every exit path commands the pump and phone-charger relays OFF and appends a
+   completed record to `/SESSIONS.CSV`; the accessory rail remains at its
+   configured state and `/PULSES.CSV` remains the raw audit log.
 9. Unknown and disabled wristbands are denied.
 
 The NanoC6 and external OLED form the public availability sign of each shower.
@@ -116,7 +114,10 @@ are shower 10 gal / 20 min, water fill 10 gal / 60 min, RV fill 100 gal /
 allowance (`allowance_gallons` in `/MEMBERS.CSV`) is a shower-only override;
 `0` means "use the station limit", and fills always use the station limit.
 The Tough's built-in display shows the operational UI to the person using the
-controller; its touch layer only serves the backup START/STOP circle.
+controller. Its Big Top theme uses a static red-and-cream sunburst, gold frame
+and marquee bulbs, an embedded circus headline font, and a ticket-style
+summary. The screen deliberately omits allowance bars and limit text, but the
+configured gallon and time limits remain fully enforced.
 
 Both downstream I2C devices are discovered by address at boot, so their
 PaHUB ports may be rearranged without rebuilding the firmware. Missing devices
@@ -172,33 +173,35 @@ laid out like a small phone app (`drawings/admin-mockups.html`, option C):
 - A **home screen** that never scrolls on a phone: the orange **Enroll a
   wristband** button, then tiles for **Members** (count, disabled count),
   **Water** (camp-wide gallons and sessions), **one tile per station** heard
-  on CampNet (OPEN / IN USE / ENROLLING / CALIBRATING / UNAVAILABLE / OFFLINE,
-  health dots for hub, relay, RFID, SD and speaker, the active member or the
-  last session), and **Camp settings** (the three station limits). Every
-  tile is also the button that opens its page.
+  on CampNet (OPEN / IN USE / ENROLLING / CALIBRATING / RELAY TEST /
+  UNAVAILABLE / OFFLINE, health dots for hub, relay, RFID, SD and speaker,
+  the active member or the last session), and **Camp settings** (the three
+  station limits). Every tile is also the button that opens its page.
 - **Members**: enroll card (name, **Enroll on** picker, cancel while
   waiting), searchable member list with the inline editor.
 - **Water use**: total / sessions / average tiles, a per-member table with
   the shower, water-fill and RV split, and every station's recent sessions.
 - **Station** (one per Tough): live session with **End session**, recent
   sessions with colour-coded end reasons (`LIMIT`/`HANDOFF` amber,
-  `TIMEOUT`/`REBOOT`/errors red), flow calibration, and on shower stations
-  the speaker (volume slider, test tone, play, stop, find speaker, channel-1
-  upload) and music-knob calibration wizard, then controller health (pills
-  for hub / relay / RFID / SD / speaker, heap, Wi-Fi clients, underruns) with
-  **Reboot controller**. Cards grey out while the station is offline.
+  `TIMEOUT`/`REBOOT`/errors red), flow calibration, on shower stations the
+  speaker (volume slider, test tone, play, stop, find speaker, channel-1
+  upload) and music-knob calibration wizard, the **Relay & power** card
+  (see below), then controller health (pills for hub / relay / RFID / SD /
+  speaker, heap, Wi-Fi clients, underruns, commanded charger and accessory
+  state) with **Reboot controller**. Cards grey out while the station is
+  offline.
 - **Camp settings**: station limits (gallons and minutes per station kind,
   synced everywhere), CampNet peers with last-seen times and counters, and
   the password card when enabled.
 
-Destructive buttons (End session, Reboot, Delete) never use browser dialogs:
-the first tap arms the button ("Tap again to confirm") for four seconds and
-the second tap acts. Results show as a toast at the bottom of the screen.
-Pages are addressed by URL hash (`#members`, `#water`, `#station/2`,
-`#camp`), so the browser back button and a reload keep your place. The
-palette is the light cream/teal/orange "daylight" theme for readability in
-the sun; it switches to a dark variant automatically when the phone is in
-dark mode.
+Destructive buttons (End session, Reboot, Delete, Save assignments,
+accessory power, relay tests) never use browser dialogs: the first tap arms
+the button ("Tap again to confirm") for four seconds and the second tap
+acts. Results show as a toast at the bottom of the screen. Pages are
+addressed by URL hash (`#members`, `#water`, `#station/2`, `#camp`), so the
+browser back button and a reload keep your place. The palette is the light
+cream/teal/orange "daylight" theme for readability in the sun; it switches
+to a dark variant automatically when the phone is in dark mode.
 
 To work on the page without hardware, `python3 tools/admin_mock_server.py`
 serves the exact HTML embedded in `src/AdminServer.cpp` with fake
@@ -216,8 +219,9 @@ starts it in a particular state, `--local N` pretends to be another station).
   over the air: enroll / cancel enrollment (the wristband must be tapped on
   the chosen station's reader, so the Enroll card has an **Enroll on**
   picker), flow calibration start/stop, music knob calibration, test tone,
-  play, stop, volume, find speaker, end session, and reboot. Audio commands
-  on a fill station answer "not supported".
+  play, stop, volume, find speaker, relay assignment, accessory power,
+  five-second relay tests, end session, and reboot. Audio commands on a fill
+  station answer "not supported".
 - Remote commands are HMAC-signed with `CampNet::SECRET` and de-duplicated by
   nonce, so a stray or replayed packet is dropped. Over the air an admin can
   start flow calibration (which runs that station's pump, still bounded by
@@ -248,8 +252,10 @@ starts it in a particular state, `--local N` pretends to be another station).
   in-flight guard, so a slow controller degrades to "retrying" instead of a
   frozen page. `/api/health` exposes uptime, heap, Wi-Fi client count, and
   hardware status; the same data is printed to serial every 30 seconds as
-  `[HEALTH]` lines. Each station page's **Controller health** card includes
-  a remote reboot button.
+  `[HEALTH]` lines. Each station page's **Controller health** card shows
+  verified controller communications as OK/DOWN pills, lists downstream
+  loads (charger, accessory rail) as commanded-only with no electrical
+  feedback, and includes a remote reboot button.
 - If the Wi-Fi access point fails to start, it is retried every 30 seconds at
   runtime.
 - `/PULSETOT.CSV` snapshots per-tag totals at each session end so boot replays
@@ -259,10 +265,33 @@ The Shower speaker card provides a 0-100% volume control. Applying a new value
 changes the Bluetooth audio level immediately and saves it in `/SETTINGS.CSV`,
 so the same level is restored after a restart or speaker reconnection.
 
-Calibration starts relay 1 and counts raw pulses while water is dispensed into
-a known-volume container. Enter the measured gallons and stop calibration to
-save the new pulses-per-gallon ratio in `/SETTINGS.CSV`. A 10-minute safety
-timeout stops calibration without changing the saved ratio.
+Calibration starts the configured pump relay and counts raw pulses while water
+is dispensed into a known-volume container. Enter the measured gallons and
+stop calibration to save the new pulses-per-gallon ratio in `/SETTINGS.CSV`.
+A 10-minute safety timeout stops calibration without changing the saved ratio.
+
+### Relay and power configuration
+
+Every station has local mappings for the pump, phone charger, and accessory
+rail. Pump defaults to relay 1; charger and accessory default to **Not
+assigned**, so installing new firmware cannot energize an unknown auxiliary
+load. Assigned roles must use different channels. The mappings and the
+accessory enabled/disabled choice are saved in `/SETTINGS.CSV` and can be
+edited from that station's page on any online admin page.
+
+The phone charger turns on as soon as an authorized wristband successfully
+opens a session, before the pump starts, and turns off on every session exit.
+The accessory rail supplies the LED power converter, speaker, and outer display
+and stays at its configured state through normal session transitions. Boot,
+reboot, relay recovery, remapping, and raw tests first command all four relays
+off, so the accessory rail may briefly power-cycle during those operations.
+
+The **Relay & power** card shows the last successfully commanded state of all
+four channels and offers a persistent accessory toggle. An idle station can
+also test any physical channel for five seconds; the firmware stops the test
+even if the browser disconnects and then restores the accessory policy. These
+states do not prove that relay contacts, converters, or loads are electrically
+working because the current hardware provides no load-feedback signal.
 
 The music-vibe calibration wizard captures ten physical knob positions in
 order: position 0 is quiet and positions 1-9 are music channels. During
@@ -330,7 +359,7 @@ id, role, SSID, channel, peer count and sync versions for confirmation.
 The configured USB port and verified upload speed come from the existing
 Tough RFID prototype. Serial commands are available as a backup to the button:
 
-- `off` — force all relays off
+- `off` — force pump and phone-charger relays off; preserve accessory policy
 - `end` — end the active shower
 - `status` — print current hardware and counter state
 

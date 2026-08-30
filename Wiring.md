@@ -103,10 +103,14 @@ USB-C reserved for programming.
 
 ## Relay Allocation
 
-1. Pump relay
-2. USB-C power
-3. LED strip power
-4. Utility lights / spare
+Relay roles are configured per station from the admin page so the physical
+channels may be rearranged without rebuilding firmware. Pump defaults to
+channel 1. USB-C and accessory power start unassigned and must be mapped after
+the wiring is verified. Assigned roles must use different channels.
+
+The accessory role switches the shared buck-converter supply for the LED strip,
+outer display, and speaker. The USB-C role is on only during an authorized
+session; the accessory role follows its persistent admin on/off setting.
 
 ------------------------------------------------------------------------
 

@@ -46,12 +46,11 @@ router-free ESP-NOW network; see `firmware/shower-controller/README.md`.
 
 ## Relay Allocation
 
-| Relay | Load |
-|:---:|------|
-| 1 | Pump (via automotive relay) |
-| 2 | USB-C power |
-| 3 | LED strip power |
-| 4 | Utility lights / spare |
+The admin page stores a per-station mapping from pump, USB-C charger, and the
+shared LED/speaker/outer-display accessory rail to three unique channels on the
+4Relay module. Pump defaults to channel 1; the auxiliary roles default to
+unassigned so an upgrade cannot energize unknown wiring. Idle-only raw-channel
+tests have a firmware-enforced five-second timeout.
 
 ------------------------------------------------------------------------
 

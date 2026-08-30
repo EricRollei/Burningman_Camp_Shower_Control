@@ -78,6 +78,9 @@ class State:
                 "knob_raw": 1873, "knob_channel": 2, "knob_cal": True, "knob_cal_active": False,
                 "knob_next": 0, "positions": [120, 560, 990, 1420, 1860, 2300, 2740, 3180, 3620, 4030],
                 "hub": True, "relay": True, "rfid": True, "sd": True, "underruns": 0,
+                "relay_state": 0, "pump_relay": 1, "charger_relay": 2 if role == 0 else 0,
+                "accessory_relay": 3 if role == 0 else 0, "accessory_enabled": role == 0,
+                "relay_test": 0,
                 "message": "Ready", "recent": []}
             for _ in range(random.randint(3, 8)):
                 m = random.choice(self.members)
@@ -122,6 +125,20 @@ class State:
         del s["recent"][8:]
         s.update(session=None, pump=False, door=0, message=f"Session ended ({reason})")
 
+    def relay_state(self, s):
+        # Bit 3 = relay 1 ... bit 0 = relay 4, mirroring the 4Relay register.
+        on = set()
+        if s["relay_test"]:
+            on.add(s["relay_test"])
+        else:
+            if s["pump"] and s["pump_relay"]:
+                on.add(s["pump_relay"])
+            if s["session"] and s["charger_relay"]:
+                on.add(s["charger_relay"])
+            if s["accessory_enabled"] and s["accessory_relay"]:
+                on.add(s["accessory_relay"])
+        return sum(1 << (4 - ch) for ch in on)
+
     def telemetry(self, sid):
         s = self.stations[sid]
         se = s["session"]
@@ -137,7 +154,10 @@ class State:
             "musicPositions": s["positions"] if s["knob_cal"] else [None] * 10,
             "enrollmentPending": bool(s["enroll"]), "pendingName": s["enroll"] or "",
             "message": s["message"],
-            "features": {"music": music, "leds": music, "doorSign": music},
+            "features": {"music": music, "leds": music, "doorSign": music, "relayConfig": True},
+            "relay": {"state": self.relay_state(s), "pump": s["pump_relay"], "charger": s["charger_relay"],
+                      "accessory": s["accessory_relay"], "accessoryEnabled": s["accessory_enabled"],
+                      "testActive": s["relay_test"] > 0, "testChannel": s["relay_test"]},
             "health": {"uptimeS": int(time.time() - self.boot) + 11520 * sid, "freeHeap": 118000 - sid * 3000,
                        "minFreeHeap": 96000, "wifiClients": 1 if sid == self.local_id else 0,
                        "hub": s["hub"], "relay": s["relay"], "rfid": s["rfid"], "sd": s["sd"],
@@ -253,6 +273,40 @@ class State:
             s["online"] = False
             threading.Timer(5.0, lambda: s.update(online=True, last_seen=time.time())).start()
             return 200, "Rebooting"
+        busy = s["session"] or s["cal"] or s["relay_test"]
+        if action == "relayConfig":
+            if busy:
+                return 409, "Relay configuration requires an idle station"
+            try:
+                pump, charger, acc = (int(args.get(k, "0")) for k in ("pump", "charger", "accessory"))
+            except ValueError:
+                return 400, "Pump must use 1-4; auxiliary relays use 0-4 and assignments must be unique"
+            used = [v for v in (pump, charger, acc) if v]
+            if not 1 <= pump <= 4 or len(set(used)) != len(used) or max(used) > 4:
+                return 400, "Pump must use 1-4; auxiliary relays use 0-4 and assignments must be unique"
+            s.update(pump_relay=pump, charger_relay=charger, accessory_relay=acc,
+                     accessory_enabled=args.get("accessoryEnabled") == "1")
+            return 200, "Relay configuration saved"
+        if action == "accessoryPower":
+            if busy:
+                return 409, "Accessory power changes require an idle station"
+            if args.get("enabled") not in ("0", "1"):
+                return 400, "Accessory state must be 0 or 1"
+            s["accessory_enabled"] = args.get("enabled") == "1"
+            return 200, "Accessory rail enabled" if s["accessory_enabled"] else "Accessory rail disabled"
+        if action == "relayTestStart":
+            if busy:
+                return 409, "Relay testing requires an idle station"
+            ch = args.get("channel", "")
+            if ch not in ("1", "2", "3", "4"):
+                return 400, "Relay channel must be 1-4"
+            s["relay_test"] = int(ch)
+            threading.Timer(5.0, lambda: s.update(relay_test=0)).start()
+            return 200, f"Testing relay {ch} for 5 seconds"
+        if action == "relayTestStop":
+            was = s["relay_test"]
+            s["relay_test"] = 0
+            return 200, "Stopping relay test" if was else "Relay outputs restored"
         if action == "endSession":
             if not s["session"]:
                 return 409, "No active session"

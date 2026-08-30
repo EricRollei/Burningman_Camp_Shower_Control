@@ -43,12 +43,6 @@ constexpr uint32_t MUSIC_KNOB_SETTLE_MS = 100;
 // First press starts the water; second press ends the shower.
 constexpr uint8_t PUMP_BUTTON_PIN = 14;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 40;
-// On-screen backup start/stop circle (ACTIVE screen, landscape 320x240).
-constexpr int32_t TOUCH_CIRCLE_X = 160;
-constexpr int32_t TOUCH_CIRCLE_Y = 180;
-constexpr int32_t TOUCH_CIRCLE_RADIUS = 48;
-constexpr int32_t TOUCH_HIT_MARGIN = 12;
-constexpr uint32_t TOUCH_DEBOUNCE_MS = 750;
 // How long the usage summary stays on screen after a shower ends.
 constexpr uint32_t SUMMARY_DISPLAY_MS = 10000;
 
@@ -128,6 +122,14 @@ constexpr const char* ROLE_HEADER_LABELS[CampNet::ROLE_COUNT] = {"CAMP SHOWER", 
 constexpr const char* ROLE_ACTIVE_LABELS[CampNet::ROLE_COUNT] = {"SHOWER IN PROGRESS", "FILLING JUGS", "FILLING RV"};
 constexpr const char* ROLE_COMPLETE_LABELS[CampNet::ROLE_COUNT] = {"SHOWER COMPLETE", "FILL COMPLETE", "FILL COMPLETE"};
 constexpr const char* ROLE_SESSION_NOUNS[CampNet::ROLE_COUNT] = {"shower", "fill", "fill"};
+constexpr const char* ROLE_IDLE_PROMPTS[CampNet::ROLE_COUNT] = {
+    "TO START A SHOWER", "TO FILL YOUR JUGS", "TO FILL YOUR RV"};
+constexpr const char* ROLE_OPEN_LABELS[CampNet::ROLE_COUNT] = {
+    "SHOWER OPEN", "WATER FILL OPEN", "RV FILL OPEN"};
+constexpr const char* ROLE_USED_LABELS[CampNet::ROLE_COUNT] = {
+    "USED THIS SHOWER", "USED THIS FILL", "USED THIS FILL"};
+constexpr const char* ROLE_THANKS_LABELS[CampNet::ROLE_COUNT] = {
+    "THANKS FOR SHOWERING", "THANKS FOR FILLING", "THANKS FOR FILLING"};
 
 // Per-role session limits. Defaults seed a fresh SD card; the admin page edits
 // them and the values sync to every station over CampNet. Bounds are hard.
@@ -140,7 +142,13 @@ constexpr uint16_t MAX_LIMIT_MINUTES = 180;
 // A member's own allowance of 0 means "use the station's role limit".
 constexpr float DEFAULT_ALLOWANCE_GALLONS = 0.0F;
 constexpr float DEFAULT_PULSES_PER_GALLON = 450.0F;
-constexpr uint8_t PUMP_RELAY = 1;
+// Fresh/upgraded cards retain the existing pump wiring. Auxiliary outputs are
+// intentionally unmapped until an admin assigns physical relay channels.
+constexpr uint8_t DEFAULT_PUMP_RELAY = 1;
+constexpr uint8_t DEFAULT_CHARGER_RELAY = 0;
+constexpr uint8_t DEFAULT_ACCESSORY_RELAY = 0;
+constexpr bool DEFAULT_ACCESSORY_ENABLED = true;
+constexpr uint32_t RELAY_TEST_MS = 5000;
 constexpr uint32_t MAX_CALIBRATION_MS = 10UL * 60UL * 1000UL;
 
 // CampNet: ESP-NOW broadcast between all stations and door signs. Cadences are
