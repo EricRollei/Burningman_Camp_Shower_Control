@@ -82,11 +82,12 @@ operates a relay or changes a session.
 1. At boot, all four relays are explicitly commanded OFF. After settings load,
    the configured accessory rail is restored if it is enabled.
 2. An enabled, enrolled wristband opens a shower session with the configured
-   pump relay off, turns on the configured phone-charger relay, and shows the
-   member's name, burn total, and a large green **START WATER** button. On the
-   person-facing Tough display, ordinary names are shortened to first name and
-   last initial (`MICHAEL P.`), while numeric sister-camp registrations display
-   as `MAD T 12`. Full names remain unchanged in the admin page and logs.
+   pump relay off, turns on the configured phone-charger relay and LED effects,
+   and shows the member's name, burn total, and a large green **START WATER**
+   button. On the person-facing Tough display, ordinary names are shortened to
+   first name and last initial (`MICHAEL P.`), while numeric sister-camp
+   registrations display as `MAD T 12`. Full names remain unchanged in the
+   admin page and logs.
 3. The first physical button press or a tap on green **START WATER** starts the
    water. The screen shows live gallons, elapsed time, and a large red **STOP
    WATER** button.
@@ -101,9 +102,10 @@ operates a relay or changes a session.
    never end someone else's shower; they only show `NOT AUTHORIZED`.
 7. The shower also ends at its per-user gallon limit (10 gallons by default)
    or a 20-minute safety timeout.
-8. Every exit path commands the pump and phone-charger relays OFF and appends a
-   completed record to `/SESSIONS.CSV`; the accessory rail remains at its
-   configured state and `/PULSES.CSV` remains the raw audit log.
+8. Every exit path commands the pump and phone-charger relays OFF, turns the LED
+   pixels black, and appends a completed record to `/SESSIONS.CSV`; the
+   accessory rail remains at its configured state and `/PULSES.CSV` remains the
+   raw audit log.
 9. Unknown and disabled wristbands are denied.
 
 The NanoC6 and external OLED form the public availability sign of each shower.
@@ -404,9 +406,11 @@ terminal to GPIO36. The first test channel starts `/MEXICO.PCM` above roughly
 calibration, the ten captured notch positions define quiet and channels 1-9.
 Serial output reports the raw ADC value and selected channel for diagnostics.
 
-The addressable strip runs a continuous moving rainbow. The installed strip is
-a 2 m, 12 V WS2811-style three-wire strip in GRB order. The configured estimate
-is 60 physical LEDs/m: 120 physical LEDs arranged as 40 addressable groups.
+The addressable strip stays black while no member is logged in. An authorized
+wristband enables the effects for the full session, including the wait before
+the water starts; every session exit turns the pixels black again. The installed
+strip is a 2 m, 12 V WS2811-style three-wire strip in GRB order. The configured
+estimate is 60 physical LEDs/m: 120 physical LEDs arranged as 40 addressable groups.
 Adjust `LED_STRIP_COUNT` in `include/Config.h` if the physical strip has a
 different density; count addressable groups (typically one group per three
 physical LEDs), not its raw LED-package count. Power the strip directly from
@@ -423,8 +427,8 @@ song or changing channels cannot create permanent wall-clock drift. Shows use
 distinct palettes and motifs: Purple Rain's violet weather, Africa's sunset and
 rain, Shania's pink-and-gold boot stomps, Diana Ross and ABBA disco treatments,
 Flashdance neon, Footloose kick chases, Maniac's electric pursuit, and Ministry's
-industrial sparks and firestorm. The default moving rainbow appears while no
-song is playing or during radio tuning.
+industrial sparks and firestorm. During an authorized session, the default
+moving rainbow appears while no song is playing or during radio tuning.
 
 Purple Rain additionally uses a 460-beat timestamp map extracted from the
 installed PCM, plus live bass/mid/treble envelopes calculated from the exact

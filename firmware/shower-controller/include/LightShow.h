@@ -57,7 +57,7 @@ class LightShow {
   };
 
   void begin();
-  void handle(const SpeakerAudio& audio);
+  void handle(const SpeakerAudio& audio, bool sessionActive);
 
  private:
   void renderRainbow();
@@ -72,6 +72,7 @@ class LightShow {
   CRGB leds_[Config::LED_STRIP_COUNT];
   uint32_t lastFrameMs_ = 0;
   uint8_t rainbowOffset_ = 0;
+  bool sessionLightingActive_ = false;
   int8_t activeShowChannel_ = -1;
   int8_t lastCue_ = -1;
   uint8_t bass_ = 0;

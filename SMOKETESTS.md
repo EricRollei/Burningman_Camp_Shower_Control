@@ -67,6 +67,11 @@ One pass through this list before the burn. Check items off as they pass.
       instead of the control.
 - [ ] **Door display:** confirm the OLED sign still tracks
       OPEN / IN_USE / UNAVAILABLE through a full session.
+- [ ] **Session-gated LEDs:** after boot and while idle, confirm every strip
+      pixel stays off. An unknown or disabled wristband must leave it off. Tap
+      an enabled wristband and confirm effects start before the water does;
+      finish the session and confirm the entire strip turns off immediately.
+      Repeat once with a timeout or admin-ended session.
 - [ ] **Matched physical and touchscreen controls:** tap an authorized
       wristband; the Big Top logged-in screen shows a large green `START WATER`
       button and the pump is off. Tap it: pump on and the button becomes a large

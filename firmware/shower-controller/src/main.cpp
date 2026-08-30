@@ -885,7 +885,7 @@ void loop() {
   reportAdminState();
   admin.handle();
   if (Config::HAS_MUSIC) speakerAudio.handle();
-  if (Config::HAS_LED_STRIP) lightShow.handle(speakerAudio);
+  if (Config::HAS_LED_STRIP) lightShow.handle(speakerAudio, sessionActive());
   serviceCampNet();
   serviceI2cRecovery();
   handleRelayAdmin();

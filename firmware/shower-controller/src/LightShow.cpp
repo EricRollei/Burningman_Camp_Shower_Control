@@ -194,7 +194,24 @@ void LightShow::begin() {
                 static_cast<unsigned>(kShowCount));
 }
 
-void LightShow::handle(const SpeakerAudio& audio) {
+void LightShow::handle(const SpeakerAudio& audio, bool sessionActive) {
+  if (!sessionActive) {
+    if (sessionLightingActive_) {
+      fill_solid(leds_, Config::LED_STRIP_COUNT, CRGB::Black);
+      FastLED.show();
+      sessionLightingActive_ = false;
+      activeShowChannel_ = -1;
+      lastCue_ = -1;
+      Serial.println("[LEDS] session ended; strip off");
+    }
+    return;
+  }
+  if (!sessionLightingActive_) {
+    sessionLightingActive_ = true;
+    lastFrameMs_ = 0;
+    Serial.println("[LEDS] authorized session; strip on");
+  }
+
   const uint32_t now = millis();
   if (now - lastFrameMs_ < Config::LED_ANIMATION_INTERVAL_MS) return;
   lastFrameMs_ = now;
