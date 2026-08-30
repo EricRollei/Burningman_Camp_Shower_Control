@@ -91,8 +91,11 @@ constexpr uint32_t WDT_TIMEOUT_S = 20;
 constexpr uint32_t HEALTH_LOG_INTERVAL_MS = 30000;
 constexpr uint32_t ADMIN_RETRY_INTERVAL_MS = 30000;
 // Human-facing percentage. SpeakerAudio maps this to the A2DP library's
-// effective 0-127 scale; 43% preserves the previous raw setting of 55.
-constexpr uint8_t DEFAULT_SPEAKER_VOLUME_PERCENT = 43;
+// effective 0-127 PCM scale. Full scale leaves the source PCM unchanged;
+// use the speaker's physical buttons for its amplifier volume.
+constexpr uint8_t LEGACY_DEFAULT_SPEAKER_VOLUME_PERCENT = 43;
+constexpr uint8_t DEFAULT_SPEAKER_VOLUME_PERCENT = 100;
+constexpr uint8_t SPEAKER_VOLUME_SETTINGS_VERSION = 1;
 
 // Station identity comes from the PlatformIO environment (-DSTATION_ID=n
 // -DSTATION_ROLE=r); see platformio.ini. Everything else derives from it.
