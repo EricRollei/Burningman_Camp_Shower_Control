@@ -266,6 +266,16 @@ added later once the RTC policy is decided.
 
 ## Build and upload
 
+For routine flashing, the repository's terminal uploader provides labeled
+profiles, USB-port selection, confirmation, and upload progress:
+
+```sh
+python3 firmware/uploader/firmware_uploader.py
+```
+
+See [`firmware/uploader/README.md`](../uploader/README.md) for the full workflow.
+The direct PlatformIO commands remain available for development:
+
 ```sh
 cd firmware/shower-controller
 pio run -e shower1            # or shower2, water_fill, rv_fill
