@@ -42,7 +42,8 @@ One pass through this list before the burn. Check items off as they pass.
       spurious watchdog resets over a long session).
 - [ ] **Remote reboot button:** station page → Controller health → Reboot
       controller (tap twice). Pump shuts off, an in-progress session is
-      logged with reason `REBOOT`, station returns to idle in ~20 s.
+      logged with reason `REBOOT`, remains off throughout boot, and the station
+      returns to idle in ~20 s.
 - [ ] **Find speaker button:** with the speaker off, wait until the station
       page's Speaker card shows "search paused" (≈2 min after boot), turn
       the speaker on, tap **Find speaker** — it should connect within ~15 s.

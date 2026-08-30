@@ -4,6 +4,7 @@
 
 #include "Config.h"
 #include "PsramAlloc.h"
+#include "StorageWrite.h"
 
 bool UsageLedger::begin() {
   entryCount_ = 0;
@@ -124,14 +125,19 @@ bool UsageLedger::save() {
   SD.remove(backupPath);
   File file = SD.open(tempPath, FILE_WRITE);
   if (!file) return false;
-  file.println("station_id,role,uid,gallons,sessions");
+  bool written = StorageWrite::line(file, "station_id,role,uid,gallons,sessions");
   for (size_t i = 0; i < entryCount_; ++i) {
-    file.printf("%u,%u,%s,%.4f,%lu\n", entries_[i].stationId, entries_[i].role,
-                entries_[i].uid, entries_[i].gallons,
-                static_cast<unsigned long>(entries_[i].sessions));
+    written = written && StorageWrite::formatted(
+                             file, "%u,%u,%s,%.4f,%lu\n", entries_[i].stationId,
+                             entries_[i].role, entries_[i].uid, entries_[i].gallons,
+                             static_cast<unsigned long>(entries_[i].sessions));
   }
   file.flush();
   file.close();
+  if (!written) {
+    SD.remove(tempPath);
+    return false;
+  }
   if (SD.exists(Config::NET_USAGE_PATH) && !SD.rename(Config::NET_USAGE_PATH, backupPath)) {
     SD.remove(tempPath);
     return false;

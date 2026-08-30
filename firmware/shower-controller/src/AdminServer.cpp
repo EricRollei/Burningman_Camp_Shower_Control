@@ -432,23 +432,7 @@ void AdminServer::configureRoutes() {
   server_.on("/api/stations", HTTP_GET, [this]() { if (authorize()) server_.send(200, "application/json", stationsJson()); });
   server_.on("/api/overview", HTTP_GET, [this]() {
     if (!authorize()) return;
-    // One request per poll instead of several keeps the single-threaded
-    // WebServer responsive and the admin page resilient.
-    const String stations = stationsJson();
-    String body;
-    body.reserve(2048 + registry_.count() * 192 + sessions_.recentCount() * 128 + stations.length());
-    body += "{\"status\":";
-    body += statusJson();
-    body += ",\"health\":";
-    body += healthJson();
-    body += ",\"members\":";
-    body += membersJson();
-    body += ",\"sessions\":";
-    body += sessionsJson();
-    body += ",\"stations\":";
-    body += stations;
-    body += '}';
-    server_.send(200, "application/json", body);
+    sendOverview();
   });
   server_.on("/api/command", HTTP_POST, [this]() { if (authorize()) handleCommandPost(); });
   server_.on("/api/command", HTTP_GET, [this]() { if (authorize()) handleCommandPoll(); });
@@ -493,6 +477,41 @@ void AdminServer::configureRoutes() {
              },
              [this]() { handleAudioUpload(); });
   server_.onNotFound([this]() { if (authorize()) sendJsonMessage(404, false, "Not found"); });
+}
+
+void AdminServer::sendOverview() {
+  // The dashboard polls every two seconds. Send one JSON component at a time
+  // so we never retain stations + members + sessions plus a duplicate combined
+  // body in internal heap. WebServer terminates the HTTP/1.1 chunked response
+  // when sendContent("") is called.
+  server_.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server_.send(200, "application/json", "");
+  server_.sendContent("{\"status\":");
+  server_.sendContent(statusJson());
+  server_.sendContent(",\"health\":");
+  server_.sendContent(healthJson());
+  server_.sendContent(",\"members\":");
+  server_.sendContent("[");
+  String memberChunk;
+  memberChunk.reserve(2048);
+  for (size_t i = 0; i < registry_.count(); ++i) {
+    String member = memberJson(i);
+    if (memberChunk.length() + member.length() + 1 > 1800 &&
+        !memberChunk.isEmpty()) {
+      server_.sendContent(memberChunk);
+      memberChunk = "";
+    }
+    if (i) memberChunk += ',';
+    memberChunk += member;
+  }
+  if (!memberChunk.isEmpty()) server_.sendContent(memberChunk);
+  server_.sendContent("]");
+  server_.sendContent(",\"sessions\":");
+  server_.sendContent(sessionsJson());
+  server_.sendContent(",\"stations\":");
+  server_.sendContent(stationsJson());
+  server_.sendContent("}");
+  server_.sendContent("");
 }
 
 // ---- Telemetry published over CampNet and rendered for every station ----
@@ -1104,30 +1123,38 @@ String AdminServer::statusJson() const {
   return body;
 }
 
+String AdminServer::memberJson(size_t index) const {
+  String body;
+  body.reserve(224);
+  const char* uid = registry_.uidAt(index);
+  if (uid == nullptr) return "{}";
+  body += "{\"uid\":\"" + jsonEscape(uid) + "\",\"name\":\"" + jsonEscape(registry_.nameAt(index));
+  body += "\",\"allowance\":" + String(registry_.allowanceAt(index), 3);
+  body += ",\"enabled\":" + String(registry_.enabledAt(index) ? "true" : "false");
+  const float local = sessions_.gallonsFor(uid);
+  body += ",\"gallons\":" + String(local, 4);
+  body += ",\"sessions\":" + String(sessions_.sessionsFor(uid));
+  float byRole[CampNet::ROLE_COUNT];
+  for (uint8_t role = 0; role < CampNet::ROLE_COUNT; ++role) {
+    byRole[role] = ledger_.remoteGallonsByRole(uid, role);
+  }
+  byRole[Config::STATION_ROLE_VALUE] += local;
+  body += ",\"networkGallons\":" + String(local + ledger_.remoteGallonsFor(uid), 4);
+  body += ",\"networkSessions\":" + String(sessions_.sessionsFor(uid) + ledger_.remoteSessionsFor(uid));
+  body += ",\"showerGallons\":" + String(byRole[CampNet::ROLE_SHOWER], 4);
+  body += ",\"waterGallons\":" + String(byRole[CampNet::ROLE_WATER_FILL], 4);
+  body += ",\"rvGallons\":" + String(byRole[CampNet::ROLE_RV_FILL], 4);
+  body += ",\"pulses\":" + String(static_cast<unsigned long long>(pulseStorage_.totalFor(uid))) + '}';
+  return body;
+}
+
 String AdminServer::membersJson() const {
   String body;
   body.reserve(registry_.count() * 192 + 4);
   body += '[';
   for (size_t i = 0; i < registry_.count(); ++i) {
     if (i) body += ',';
-    const char* uid = registry_.uidAt(i);
-    body += "{\"uid\":\"" + jsonEscape(uid) + "\",\"name\":\"" + jsonEscape(registry_.nameAt(i));
-    body += "\",\"allowance\":" + String(registry_.allowanceAt(i), 3);
-    body += ",\"enabled\":" + String(registry_.enabledAt(i) ? "true" : "false");
-    const float local = sessions_.gallonsFor(uid);
-    body += ",\"gallons\":" + String(local, 4);
-    body += ",\"sessions\":" + String(sessions_.sessionsFor(uid));
-    float byRole[CampNet::ROLE_COUNT];
-    for (uint8_t role = 0; role < CampNet::ROLE_COUNT; ++role) {
-      byRole[role] = ledger_.remoteGallonsByRole(uid, role);
-    }
-    byRole[Config::STATION_ROLE_VALUE] += local;
-    body += ",\"networkGallons\":" + String(local + ledger_.remoteGallonsFor(uid), 4);
-    body += ",\"networkSessions\":" + String(sessions_.sessionsFor(uid) + ledger_.remoteSessionsFor(uid));
-    body += ",\"showerGallons\":" + String(byRole[CampNet::ROLE_SHOWER], 4);
-    body += ",\"waterGallons\":" + String(byRole[CampNet::ROLE_WATER_FILL], 4);
-    body += ",\"rvGallons\":" + String(byRole[CampNet::ROLE_RV_FILL], 4);
-    body += ",\"pulses\":" + String(static_cast<unsigned long long>(pulseStorage_.totalFor(uid))) + '}';
+    body += memberJson(i);
   }
   body += ']';
   return body;

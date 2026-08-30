@@ -782,6 +782,14 @@ void setup() {
   // explicitly before probing the PaHUB rather than relying on library defaults.
   M5.Power.setExtOutput(true);
   delay(150);
+
+  // A watchdog reset does not power-cycle the external 4Relay module. Force it
+  // off before display, SD replay, LEDs, radio or Bluetooth can delay boot.
+  Wire.end();
+  delay(10);
+  Wire.begin(Config::I2C_SDA, Config::I2C_SCL, Config::I2C_FREQUENCY);
+  discoverI2cDevices();
+
   M5.Display.setRotation(1);
   stationDisplay.begin();
   pinMode(Config::PUMP_BUTTON_PIN, INPUT_PULLUP);
@@ -808,9 +816,11 @@ void setup() {
   const bool sessionsReady = sdReady && sessions.begin();
   const bool ledgerReady = sdReady && ledger.begin();
 
-  Wire.end(); delay(10);
-  Wire.begin(Config::I2C_SDA, Config::I2C_SCL, Config::I2C_FREQUENCY);
-  discoverI2cDevices();
+  // Relay discovery used safe defaults above. Now that the saved mapping is
+  // available, begin from all-off again and restore only configured accessory
+  // power. Pump and charger remain off.
+  shutdownAllRelays();
+  if (relayReady && !applyAccessoryPolicy()) relayReady = false;
   const bool netReady = campNet.begin();
   const bool adminReady = netReady && admin.begin();
   bool audioReady = false;

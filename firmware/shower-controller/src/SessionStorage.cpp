@@ -4,6 +4,7 @@
 
 #include "Config.h"
 #include "PsramAlloc.h"
+#include "StorageWrite.h"
 
 bool SessionStorage::begin() {
   if (totals_ == nullptr) totals_ = psramArray<Total>(MAX_TOTALS);
@@ -16,8 +17,11 @@ bool SessionStorage::begin() {
   if (!SD.exists(Config::SESSION_PATH)) {
     File file = SD.open(Config::SESSION_PATH, FILE_WRITE);
     if (!file) return false;
-    file.println("start_ms,end_ms,uid,pulses,gallons,allowance_gallons,end_reason");
+    const bool written = StorageWrite::line(
+        file, "start_ms,end_ms,uid,pulses,gallons,allowance_gallons,end_reason");
+    file.flush();
     file.close();
+    if (!written) return false;
   }
   healthy_ = true;
   restore();
@@ -33,12 +37,16 @@ bool SessionStorage::append(uint32_t startMs, uint32_t endMs, const char* uid,
     healthy_ = false;
     return false;
   }
-  file.printf("%lu,%lu,%s,%lu,%.4f,%.3f,%s\n",
-              static_cast<unsigned long>(startMs),
-              static_cast<unsigned long>(endMs), uid,
-              static_cast<unsigned long>(pulses), gallons, allowance, reason);
+  const bool written = StorageWrite::formatted(
+      file, "%lu,%lu,%s,%lu,%.4f,%.3f,%s\n",
+      static_cast<unsigned long>(startMs), static_cast<unsigned long>(endMs), uid,
+      static_cast<unsigned long>(pulses), gallons, allowance, reason);
   file.flush();
   file.close();
+  if (!written) {
+    healthy_ = false;
+    return false;
+  }
 
   Record record;
   record.startMs = startMs;

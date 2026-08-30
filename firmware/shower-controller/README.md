@@ -60,8 +60,10 @@ Members and limits use version-numbered last-writer-wins: a local edit bumps
 the version past anything heard on the air and broadcasts; a newer version
 replaces the local copy and is saved to the SD card. Two stations that edit at
 the same version (for example two fresh SD cards each with their own
-enrollments) are merged by union so no wristband disappears. Versions live in
-`/MEMBERS.VER` and `SETTINGS.CSV` (`limits_version`).
+enrollments) are merged by union so no wristband disappears. The member version
+is embedded in the atomically replaced `/MEMBERS.CSV` header; legacy cards with
+`/MEMBERS.VER` are still read until the next successful registry save. Limit
+versions live in `SETTINGS.CSV` (`limits_version`).
 
 The header of every screen shows `READY - n NET`, where `n` is the number of
 other stations heard in the last 15 s. The admin page's home screen has a
@@ -251,9 +253,10 @@ starts it in a particular state, `--local N` pretends to be another station).
   minutes, then retries one round every five minutes so inquiry scanning does
   not starve the Wi-Fi access point. The dashboard's **Find speaker** button
   forces a fresh scan window.
-- The dashboard polls a single `/api/overview` endpoint with a timeout and an
-  in-flight guard, so a slow controller degrades to "retrying" instead of a
-  frozen page. `/api/health` exposes uptime, heap, Wi-Fi client count, and
+- The dashboard polls a single, chunk-streamed `/api/overview` endpoint with a
+  timeout and an in-flight guard, so the controller does not retain duplicate
+  camp-wide JSON buffers and a slow controller degrades to "retrying" instead
+  of a frozen page. `/api/health` exposes uptime, heap, Wi-Fi client count, and
   hardware status; the same data is printed to serial every 30 seconds as
   `[HEALTH]` lines. Each station page's **Controller health** card shows
   verified controller communications as OK/DOWN pills, lists downstream

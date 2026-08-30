@@ -5,6 +5,7 @@
 
 #include "Config.h"
 #include "PsramAlloc.h"
+#include "StorageWrite.h"
 
 bool PulseStorage::begin() {
   if (totals_ == nullptr) totals_ = psramArray<TagTotal>(MAX_TAGS);
@@ -21,14 +22,23 @@ bool PulseStorage::begin() {
   }
 
   cardSizeMB_ = SD.cardSize() / (1024ULL * 1024ULL);
+  if (!SD.exists(Config::PULSE_SNAPSHOT_PATH) && SD.exists("/PULSETOT.BAK")) {
+    SD.rename("/PULSETOT.BAK", Config::PULSE_SNAPSHOT_PATH);
+  }
   if (!SD.exists(Config::LOG_PATH)) {
     File file = SD.open(Config::LOG_PATH, FILE_WRITE);
     if (!file) {
       healthy_ = false;
       return false;
     }
-    file.println("uptime_ms,uid,delta_pulses,tag_total_pulses,event");
+    const bool written = StorageWrite::line(
+        file, "uptime_ms,uid,delta_pulses,tag_total_pulses,event");
+    file.flush();
     file.close();
+    if (!written) {
+      healthy_ = false;
+      return false;
+    }
   }
 
   restoreTotals();
@@ -55,8 +65,7 @@ bool PulseStorage::endTag(const char* uid) {
   const bool logged = index >= 0 && append(uid, 0, totals_[index].pulses, "END");
   // Sessions end rarely, so this is a cheap moment to compact the totals into
   // a snapshot; the next boot then replays only the log tail.
-  if (logged) writeSnapshot();
-  return logged;
+  return logged && writeSnapshot();
 }
 
 uint64_t PulseStorage::totalFor(const char* uid) const {
@@ -90,11 +99,13 @@ bool PulseStorage::append(const char* uid, uint32_t delta, uint64_t total,
     return false;
   }
 
-  file.printf("%lu,%s,%lu,%llu,%s\n", static_cast<unsigned long>(millis()),
-              uid, static_cast<unsigned long>(delta), total, event);
+  const bool written = StorageWrite::formatted(
+      file, "%lu,%s,%lu,%llu,%s\n", static_cast<unsigned long>(millis()), uid,
+      static_cast<unsigned long>(delta), static_cast<unsigned long long>(total), event);
   file.flush();
   file.close();
-  return true;
+  if (!written) healthy_ = false;
+  return written;
 }
 
 void PulseStorage::restoreTotals() {
@@ -110,12 +121,19 @@ bool PulseStorage::loadSnapshot(uint64_t& replayOffset) {
   File file = SD.open(Config::PULSE_SNAPSHOT_PATH, FILE_READ);
   if (!file) return false;
   bool haveOffset = false;
+  bool haveExpectedCount = false;
+  size_t expectedCount = 0;
   while (file.available()) {
     String line = file.readStringUntil('\n');
     line.trim();
     if (line.startsWith("offset,")) {
       replayOffset = strtoull(line.c_str() + 7, nullptr, 10);
       haveOffset = true;
+      continue;
+    }
+    if (line.startsWith("count,")) {
+      expectedCount = static_cast<size_t>(strtoul(line.c_str() + 6, nullptr, 10));
+      haveExpectedCount = true;
       continue;
     }
     char uid[UID_SIZE] = {0};
@@ -125,31 +143,60 @@ bool PulseStorage::loadSnapshot(uint64_t& replayOffset) {
     if (index >= 0) totals_[index].pulses = total;
   }
   file.close();
-  return haveOffset;
+  return haveOffset && (!haveExpectedCount || tagCount_ == expectedCount);
 }
 
-void PulseStorage::writeSnapshot() {
-  if (!healthy_) return;
+bool PulseStorage::writeSnapshot() {
+  if (!healthy_) return false;
   uint64_t logSize = 0;
   {
     File log = SD.open(Config::LOG_PATH, FILE_READ);
-    if (!log) return;
+    if (!log) {
+      healthy_ = false;
+      return false;
+    }
     logSize = log.size();
     log.close();
   }
   constexpr char tempPath[] = "/PULSETOT.TMP";
+  constexpr char backupPath[] = "/PULSETOT.BAK";
   SD.remove(tempPath);
   File file = SD.open(tempPath, FILE_WRITE);
-  if (!file) return;
-  file.printf("offset,%llu\n", static_cast<unsigned long long>(logSize));
+  if (!file) {
+    healthy_ = false;
+    return false;
+  }
+  bool written = StorageWrite::formatted(
+      file, "offset,%llu\n", static_cast<unsigned long long>(logSize));
+  written = written && StorageWrite::formatted(file, "count,%u\n",
+                                                static_cast<unsigned>(tagCount_));
   for (size_t i = 0; i < tagCount_; ++i) {
-    file.printf("%s,%llu\n", totals_[i].uid,
-                static_cast<unsigned long long>(totals_[i].pulses));
+    written = written && StorageWrite::formatted(
+                             file, "%s,%llu\n", totals_[i].uid,
+                             static_cast<unsigned long long>(totals_[i].pulses));
   }
   file.flush();
   file.close();
-  SD.remove(Config::PULSE_SNAPSHOT_PATH);
-  SD.rename(tempPath, Config::PULSE_SNAPSHOT_PATH);
+  if (!written) {
+    SD.remove(tempPath);
+    healthy_ = false;
+    return false;
+  }
+  SD.remove(backupPath);
+  if (SD.exists(Config::PULSE_SNAPSHOT_PATH) &&
+      !SD.rename(Config::PULSE_SNAPSHOT_PATH, backupPath)) {
+    SD.remove(tempPath);
+    healthy_ = false;
+    return false;
+  }
+  if (!SD.rename(tempPath, Config::PULSE_SNAPSHOT_PATH)) {
+    if (SD.exists(backupPath)) SD.rename(backupPath, Config::PULSE_SNAPSHOT_PATH);
+    SD.remove(tempPath);
+    healthy_ = false;
+    return false;
+  }
+  SD.remove(backupPath);
+  return true;
 }
 
 void PulseStorage::replayLog(uint64_t fromOffset) {

@@ -51,7 +51,6 @@ class MemberRegistry {
   int find(const char* uid) const;
   String cleanName(const String& name) const;
   bool save();
-  bool saveVersion();
   void loadVersion();
   bool bumpVersionAndSave();
   bool sameAs(const CampNet::MemberEntry* entries, size_t count) const;

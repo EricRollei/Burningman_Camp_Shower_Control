@@ -28,7 +28,7 @@ class PulseStorage {
               const char* event);
   void restoreTotals();
   bool loadSnapshot(uint64_t& replayOffset);
-  void writeSnapshot();
+  bool writeSnapshot();
   void replayLog(uint64_t fromOffset);
 
   TagTotal* totals_ = nullptr;  // PSRAM, MAX_TAGS
@@ -36,4 +36,3 @@ class PulseStorage {
   bool healthy_ = false;
   uint64_t cardSizeMB_ = 0;
 };
-

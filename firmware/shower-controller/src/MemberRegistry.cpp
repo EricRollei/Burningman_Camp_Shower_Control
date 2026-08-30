@@ -4,6 +4,7 @@
 
 #include "Config.h"
 #include "PsramAlloc.h"
+#include "StorageWrite.h"
 
 bool MemberRegistry::allocate() {
   if (members_ == nullptr) members_ = psramArray<Member>(MAX_MEMBERS);
@@ -24,8 +25,11 @@ bool MemberRegistry::begin() {
   if (!SD.exists(Config::MEMBER_PATH)) {
     File file = SD.open(Config::MEMBER_PATH, FILE_WRITE);
     if (!file) return false;
-    file.println("uid,name,allowance_gallons,enabled");
+    const bool written = StorageWrite::line(
+        file, "uid,name,allowance_gallons,enabled,registry_version=0");
+    file.flush();
     file.close();
+    if (!written) return false;
   }
 
   File file = SD.open(Config::MEMBER_PATH, FILE_READ);
@@ -73,6 +77,10 @@ bool MemberRegistry::upsert(const char* uid, const String& requestedName) {
   if (name.isEmpty()) return false;
 
   int index = find(uid);
+  const size_t previousCount = memberCount_;
+  Member previous;
+  const bool existed = index >= 0;
+  if (existed) previous = members_[index];
   if (index < 0) {
     if (memberCount_ >= MAX_MEMBERS) return false;
     index = static_cast<int>(memberCount_++);
@@ -81,7 +89,10 @@ bool MemberRegistry::upsert(const char* uid, const String& requestedName) {
     members_[index].enabled = true;
   }
   strlcpy(members_[index].name, name.c_str(), NAME_SIZE);
-  return bumpVersionAndSave();
+  if (bumpVersionAndSave()) return true;
+  if (existed) members_[index] = previous;
+  else memberCount_ = previousCount;
+  return false;
 }
 
 bool MemberRegistry::update(const char* uid, const String& requestedName,
@@ -103,11 +114,18 @@ bool MemberRegistry::update(const char* uid, const String& requestedName,
 bool MemberRegistry::remove(const char* uid) {
   const int index = find(uid);
   if (!healthy_ || index < 0) return false;
+  const Member removed = members_[index];
   for (size_t i = static_cast<size_t>(index); i + 1 < memberCount_; ++i) {
     members_[i] = members_[i + 1];
   }
   --memberCount_;
-  return bumpVersionAndSave();
+  if (bumpVersionAndSave()) return true;
+  for (size_t i = memberCount_; i > static_cast<size_t>(index); --i) {
+    members_[i] = members_[i - 1];
+  }
+  members_[index] = removed;
+  ++memberCount_;
+  return false;
 }
 
 const char* MemberRegistry::nameFor(const char* uid) const {
@@ -202,8 +220,9 @@ bool MemberRegistry::applyRemoteSnapshot(uint8_t fromStationId, uint32_t version
     // Identical content: just catch up the version number so that a later
     // local edit sorts after this snapshot everywhere.
     if (version > version_) {
+      const uint32_t previousVersion = version_;
       version_ = version;
-      saveVersion();
+      if (!save()) version_ = previousVersion;
     }
     return false;
   }
@@ -225,7 +244,7 @@ bool MemberRegistry::applyRemoteSnapshot(uint8_t fromStationId, uint32_t version
       members_[memberCount_++] = member;
     }
     version_ = version;
-    if (save() && saveVersion()) return true;
+    if (save()) return true;
   } else {
     // Same version, different content (two stations edited before hearing
     // from each other, or two fresh SD cards). Merge by union so nobody's
@@ -276,13 +295,27 @@ bool MemberRegistry::bumpVersionAndSave() {
   const uint32_t previousVersion = version_;
   version_ = max(version_, highestSeenVersion_) + 1;
   highestSeenVersion_ = version_;
-  if (save() && saveVersion()) return true;
+  if (save()) return true;
   version_ = previousVersion;
   return false;
 }
 
 void MemberRegistry::loadVersion() {
   version_ = 0;
+  File registry = SD.open(Config::MEMBER_PATH, FILE_READ);
+  if (registry) {
+    String header = registry.readStringUntil('\n');
+    registry.close();
+    const int marker = header.indexOf("registry_version=");
+    if (marker >= 0) {
+      version_ = static_cast<uint32_t>(
+          strtoul(header.c_str() + marker + strlen("registry_version="), nullptr, 10));
+      highestSeenVersion_ = max(highestSeenVersion_, version_);
+      return;
+    }
+  }
+  // Legacy cards stored the version separately. The next successful registry
+  // save embeds it in MEMBERS.CSV so content and version commit together.
   File file = SD.open(Config::MEMBER_VERSION_PATH, FILE_READ);
   if (!file) return;
   String line = file.readStringUntil('\n');
@@ -292,30 +325,32 @@ void MemberRegistry::loadVersion() {
   highestSeenVersion_ = max(highestSeenVersion_, version_);
 }
 
-bool MemberRegistry::saveVersion() {
-  SD.remove(Config::MEMBER_VERSION_PATH);
-  File file = SD.open(Config::MEMBER_VERSION_PATH, FILE_WRITE);
-  if (!file) return false;
-  file.println(static_cast<unsigned long>(version_));
-  file.flush();
-  file.close();
-  return true;
-}
-
 bool MemberRegistry::save() {
   constexpr char tempPath[] = "/MEMBERS.TMP";
   constexpr char backupPath[] = "/MEMBERS.BAK";
   SD.remove(tempPath);
   SD.remove(backupPath);
   File file = SD.open(tempPath, FILE_WRITE);
-  if (!file) return false;
-  file.println("uid,name,allowance_gallons,enabled");
+  if (!file) {
+    healthy_ = false;
+    return false;
+  }
+  bool written = StorageWrite::formatted(
+      file, "uid,name,allowance_gallons,enabled,registry_version=%lu\n",
+      static_cast<unsigned long>(version_));
   for (size_t i = 0; i < memberCount_; ++i) {
-    file.printf("%s,%s,%.3f,%u\n", members_[i].uid, members_[i].name,
-                members_[i].allowanceGallons, members_[i].enabled ? 1 : 0);
+    written = written && StorageWrite::formatted(
+                             file, "%s,%s,%.3f,%u\n", members_[i].uid,
+                             members_[i].name, members_[i].allowanceGallons,
+                             members_[i].enabled ? 1 : 0);
   }
   file.flush();
   file.close();
+  if (!written) {
+    SD.remove(tempPath);
+    healthy_ = false;
+    return false;
+  }
 
   if (SD.exists(Config::MEMBER_PATH) &&
       !SD.rename(Config::MEMBER_PATH, backupPath)) {

@@ -5,6 +5,7 @@
 #include <mbedtls/sha256.h>
 
 #include "Config.h"
+#include "StorageWrite.h"
 
 bool SettingsStore::begin() {
   if (SD.cardType() == CARD_NONE) return false;
@@ -136,10 +137,16 @@ bool SettingsStore::begin() {
     for (uint8_t& value : salt_) value = static_cast<uint8_t>(esp_random());
     computeHash(Config::INITIAL_ADMIN_PASSWORD, passwordHash_);
     hasPassword_ = true;
-    return save();
+    if (save()) return true;
+    healthy_ = false;
+    return false;
   }
-  if (migrateSpeakerVolume) return save();
-  return loadedCalibration || save();
+  if (migrateSpeakerVolume || !loadedCalibration) {
+    if (save()) return true;
+    healthy_ = false;
+    return false;
+  }
+  return true;
 }
 
 bool SettingsStore::setMusicKnobCalibration(
@@ -355,39 +362,62 @@ bool SettingsStore::save() {
   SD.remove(tempPath);
   SD.remove(backupPath);
   File file = SD.open(tempPath, FILE_WRITE);
-  if (!file) return false;
-  file.println("key,value");
-  file.printf("calibration_ppg,%.6f\n", pulsesPerGallon_);
-  file.printf("speaker_volume_percent,%u\n", speakerVolumePercent_);
-  file.printf("relay_pump,%u\n", relayConfig_.pump);
-  file.printf("relay_charger,%u\n", relayConfig_.charger);
-  file.printf("relay_accessory,%u\n", relayConfig_.accessory);
-  file.printf("accessory_enabled,%u\n", relayConfig_.accessoryEnabled ? 1 : 0);
-  file.printf("speaker_volume_settings_version,%u\n",
-              Config::SPEAKER_VOLUME_SETTINGS_VERSION);
+  if (!file) {
+    healthy_ = false;
+    return false;
+  }
+  bool written = StorageWrite::line(file, "key,value");
+  written = written && StorageWrite::formatted(file, "calibration_ppg,%.6f\n", pulsesPerGallon_);
+  written = written && StorageWrite::formatted(file, "speaker_volume_percent,%u\n", speakerVolumePercent_);
+  written = written && StorageWrite::formatted(file, "relay_pump,%u\n", relayConfig_.pump);
+  written = written && StorageWrite::formatted(file, "relay_charger,%u\n", relayConfig_.charger);
+  written = written && StorageWrite::formatted(file, "relay_accessory,%u\n", relayConfig_.accessory);
+  written = written && StorageWrite::formatted(file, "accessory_enabled,%u\n", relayConfig_.accessoryEnabled ? 1 : 0);
+  written = written && StorageWrite::formatted(
+                             file, "speaker_volume_settings_version,%u\n",
+                             Config::SPEAKER_VOLUME_SETTINGS_VERSION);
   if (musicKnobCalibrated_) {
     for (uint8_t i = 0; i < Config::MUSIC_KNOB_POSITION_COUNT; ++i) {
-      file.printf("music_knob_%u,%u\n", i, musicKnobPositions_[i]);
+      written = written && StorageWrite::formatted(
+                               file, "music_knob_%u,%u\n", i,
+                               musicKnobPositions_[i]);
     }
   }
   static const char* const roleKeys[CampNet::ROLE_COUNT] = {"shower", "water", "rv"};
   for (uint8_t role = 0; role < CampNet::ROLE_COUNT; ++role) {
-    file.printf("limit_%s_gal,%.3f\n", roleKeys[role], roleLimits_[role].gallons);
-    file.printf("limit_%s_min,%u\n", roleKeys[role], roleLimits_[role].minutes);
+    written = written && StorageWrite::formatted(
+                             file, "limit_%s_gal,%.3f\n", roleKeys[role],
+                             roleLimits_[role].gallons);
+    written = written && StorageWrite::formatted(
+                             file, "limit_%s_min,%u\n", roleKeys[role],
+                             roleLimits_[role].minutes);
   }
-  file.printf("limits_version,%lu\n", static_cast<unsigned long>(limitsVersion_));
-  file.printf("auth_version,%lu\n", static_cast<unsigned long>(authVersion_));
-  file.printf("admin_salt,%s\n", toHex(salt_, sizeof(salt_)).c_str());
-  file.printf("admin_hash,%s\n", toHex(passwordHash_, sizeof(passwordHash_)).c_str());
+  written = written && StorageWrite::formatted(
+                           file, "limits_version,%lu\n",
+                           static_cast<unsigned long>(limitsVersion_));
+  written = written && StorageWrite::formatted(
+                           file, "auth_version,%lu\n",
+                           static_cast<unsigned long>(authVersion_));
+  const String salt = toHex(salt_, sizeof(salt_));
+  const String hash = toHex(passwordHash_, sizeof(passwordHash_));
+  written = written && StorageWrite::formatted(file, "admin_salt,%s\n", salt.c_str());
+  written = written && StorageWrite::formatted(file, "admin_hash,%s\n", hash.c_str());
   file.flush();
   file.close();
+  if (!written) {
+    SD.remove(tempPath);
+    healthy_ = false;
+    return false;
+  }
   if (SD.exists(Config::SETTINGS_PATH) &&
       !SD.rename(Config::SETTINGS_PATH, backupPath)) {
     SD.remove(tempPath);
+    healthy_ = false;
     return false;
   }
   if (!SD.rename(tempPath, Config::SETTINGS_PATH)) {
     if (SD.exists(backupPath)) SD.rename(backupPath, Config::SETTINGS_PATH);
+    healthy_ = false;
     return false;
   }
   SD.remove(backupPath);

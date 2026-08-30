@@ -52,7 +52,9 @@ class AdminServer {
 
  private:
   void configureRoutes();
+  void sendOverview();
   String statusJson() const;
+  String memberJson(size_t index) const;
   String membersJson() const;
   String sessionsJson() const;
   String healthJson() const;
