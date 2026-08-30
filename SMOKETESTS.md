@@ -52,9 +52,11 @@ One pass through this list before the burn. Check items off as they pass.
 
 ## CampNet (branch `worktree-camp-network`)
 
-- [ ] **Right images on the right boxes:** serial `status` on each Tough prints
-      `[STATION] id=… role=…` matching its label; each door sign shows `S1` /
-      `S2` in the corner matching the shower it is mounted on.
+- [ ] **Right images on the right boxes:** flash each labeled device with
+      `python3 firmware/uploader/firmware_uploader.py`, checking its profile and
+      USB port on the confirmation screen. Serial `status` on each Tough then
+      prints `[STATION] id=… role=…` matching its label; each door sign shows
+      `S1` / `S2` in the corner matching the shower it is mounted on.
 - [ ] **Door sign tracks its own shower only:** start a session on Shower 1 —
       door 1 flips to IN USE within a second, door 2 stays OPEN. Power off
       Shower 1's Tough — door 1 shows OFFLINE within 3 s.
