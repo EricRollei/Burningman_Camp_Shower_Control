@@ -12,8 +12,8 @@ stateDiagram-v2
     Idle --> LoggedIn: Tag scanned (authorized)
     Idle --> Denied: Tag scanned (unknown)
     Denied --> Idle: Timeout
-    LoggedIn --> Showering: Button press 1 (water on)
-    Showering --> Summary: Button press 2 / limit / 20 min timeout
+    LoggedIn --> Showering: Physical or green Start button
+    Showering --> Summary: Physical or red Stop button / limit / 20 min timeout
     LoggedIn --> LoggedIn: Different authorized tag (handoff)
     Showering --> LoggedIn: Different authorized tag (handoff, logs old shower)
     Summary --> Idle: 10 s timeout
@@ -31,7 +31,8 @@ stateDiagram-v2
 ### Logged in
 - "HOWDY" with a size-to-fit member name
 - Camp-wide gallons used this burn
-- "PRESS BUTTON TO START WATER" (no touch; one physical button)
+- Large green "START WATER" touchscreen button
+- Physical button backup reminder
 
 ### Denied
 - "NOT AUTHORIZED" and the denial reason
@@ -41,7 +42,8 @@ stateDiagram-v2
 - Member name and elapsed `MM:SS`
 - Live water used in gallons to two decimal places
 - Role-specific "used this shower/fill" wording
-- "PRESS BUTTON WHEN DONE"
+- Large red "STOP WATER" touchscreen button
+- Physical button backup reminder
 
 ### Summary (10 seconds, then Idle)
 - Ticket with gallons used, elapsed time, and camp-wide burn total
@@ -56,5 +58,6 @@ The implemented theme is Option A, **Big Top**, from
 `drawings/ui-mockups.html`. All screens use gallons only. Allowance and limit
 indicators are intentionally omitted from the display, but firmware enforcement
 is unchanged. The frame is redrawn only on state transitions; active gallons
-refresh at most four times per second and elapsed time once per second. Touch
-is not used; all member input is the wristband and the single physical button.
+refresh at most four times per second and elapsed time once per second. The
+touchscreen Start/Stop control and physical GPIO14 button operate the same
+toggle lifecycle; touches outside the large control do nothing.

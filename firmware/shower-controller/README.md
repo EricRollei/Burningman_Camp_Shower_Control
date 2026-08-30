@@ -73,24 +73,26 @@ last-seen time; `/api/status` exposes `peers`, `net` counters, `limits`,
 
 ## Session behavior
 
-The person showering or filling interacts with the RFID reader and the single
-momentary button on GPIO14. The Tough touchscreen is display-only; touching
-the idle, active, message, calibration, or summary screen never operates a
-relay or changes a session.
+The person showering or filling interacts with the RFID reader, the momentary
+button on GPIO14, and the large touchscreen Start/Stop control. The physical
+and digital buttons operate the same toggle lifecycle. Touching outside that
+control, or touching any idle, message, calibration, or summary screen, never
+operates a relay or changes a session.
 
 1. At boot, all four relays are explicitly commanded OFF. After settings load,
    the configured accessory rail is restored if it is enabled.
 2. An enabled, enrolled wristband opens a shower session with the configured
    pump relay off, turns on the configured phone-charger relay, and shows the
-   member's name, burn total, and **PRESS BUTTON TO START WATER**. On the
+   member's name, burn total, and a large green **START WATER** button. On the
    person-facing Tough display, ordinary names are shortened to first name and
    last initial (`MICHAEL P.`), while numeric sister-camp registrations display
    as `MAD T 12`. Full names remain unchanged in the admin page and logs.
-3. The first physical button press starts the water. The screen shows live
-   gallons, elapsed time, and **PRESS BUTTON WHEN DONE**.
-4. The second physical button press ends the shower and turns the pump off.
-   Button presses are ignored when no member is authenticated or during
-   calibration.
+3. The first physical button press or a tap on green **START WATER** starts the
+   water. The screen shows live gallons, elapsed time, and a large red **STOP
+   WATER** button.
+4. The next physical button press or a tap on red **STOP WATER** ends the
+   shower and turns the pump off. Both controls are ignored when no member is
+   authenticated or during calibration.
 5. After a shower ends the screen shows the gallons used and elapsed time for
    10 seconds (`SUMMARY_DISPLAY_MS`), then returns to the ready screen.
 6. If a different enrolled wristband is tapped while a session is open (someone

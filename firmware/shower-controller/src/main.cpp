@@ -305,7 +305,8 @@ void startSession(const String& uid) {
     setMessage("UNAVAILABLE", "Usage storage needs service");
     return;
   }
-  // Authentication opens a session; the physical button starts water flow.
+  // Authentication opens a session; an explicit physical or touchscreen
+  // button activation starts water flow.
   if (!setConfiguredRelay(settings.relayConfig().pump, false)) {
     summaryGallons = 0.0F; summaryElapsedMs = 0;
     setMessage("UNAVAILABLE", "Pump control needs service");
@@ -467,8 +468,8 @@ void handleRelayAdmin() {
   }
 }
 
-// The physical GPIO button is the only member-facing water control. The first
-// press starts the water; the next one ends the session (pump off).
+// The physical GPIO button and touchscreen button share this lifecycle. The
+// first activation starts the water; the next one ends the session (pump off).
 void toggleShowerWater(const char* source, const char* endReason) {
   if (calibrationActive) {
     Serial.printf("[%s] ignored during calibration\n", source);
@@ -507,6 +508,16 @@ void handlePumpButton() {
   buttonStablePressed = pressed;
   if (!pressed) return;
   toggleShowerWater("BUTTON", "BUTTON");
+}
+
+void handleTouchButton() {
+  if (screenState != ScreenState::ACTIVE || !sessionActive() ||
+      calibrationActive || M5.Touch.getCount() == 0) return;
+
+  const auto touch = M5.Touch.getDetail();
+  if (!touch.wasClicked() ||
+      !stationDisplay.controlButtonContains(touch.x, touch.y)) return;
+  toggleShowerWater("TOUCH", "TOUCH");
 }
 
 void handleMusicKnob() {
@@ -880,6 +891,7 @@ void loop() {
   handleRelayAdmin();
   serviceReliability();
   handlePumpButton();
+  handleTouchButton();
   if (Config::HAS_MUSIC) handleMusicKnob();
   handleSerial();
   pollFlow();

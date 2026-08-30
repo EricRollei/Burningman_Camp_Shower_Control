@@ -17,10 +17,16 @@ constexpr uint16_t BIG_TOP_CREAM = rgb565(249, 235, 208);
 constexpr uint16_t BIG_TOP_GOLD = rgb565(242, 193, 78);
 constexpr uint16_t BIG_TOP_ORANGE = rgb565(227, 154, 43);
 constexpr uint16_t BIG_TOP_DENIED = rgb565(255, 179, 167);
+constexpr uint16_t START_GREEN = rgb565(25, 138, 67);
+constexpr uint16_t STOP_RED = rgb565(202, 38, 45);
 constexpr int32_t FOOTER_X = 22;
 constexpr int32_t FOOTER_Y = 198;
 constexpr int32_t FOOTER_W = 276;
 constexpr int32_t FOOTER_H = 27;
+constexpr int32_t CONTROL_X = 30;
+constexpr int32_t CONTROL_Y = 140;
+constexpr int32_t CONTROL_W = 260;
+constexpr int32_t CONTROL_H = 50;
 
 bool isAsciiUpperDisplayable(const String& value) {
   for (size_t i = 0; i < value.length(); ++i) {
@@ -169,6 +175,25 @@ void StationDisplay::drawFooter(const char* text, bool pale) {
   M5.Display.drawString(text, 160, FOOTER_Y + FOOTER_H / 2 - 1);
 }
 
+void StationDisplay::drawControlButton(bool pumpOn) {
+  const uint16_t fill = pumpOn ? STOP_RED : START_GREEN;
+  M5.Display.fillRoundRect(CONTROL_X + 2, CONTROL_Y + 3, CONTROL_W,
+                           CONTROL_H, 10, BIG_TOP_DARK);
+  M5.Display.fillRoundRect(CONTROL_X, CONTROL_Y, CONTROL_W, CONTROL_H, 10,
+                           fill);
+  M5.Display.drawRoundRect(CONTROL_X, CONTROL_Y, CONTROL_W, CONTROL_H, 10,
+                           BIG_TOP_CREAM);
+  M5.Display.drawRoundRect(CONTROL_X + 1, CONTROL_Y + 1, CONTROL_W - 2,
+                           CONTROL_H - 2, 9, BIG_TOP_GOLD);
+  drawBigTopText(pumpOn ? "STOP WATER" : "START WATER", 160,
+                 CONTROL_Y + CONTROL_H / 2 - 1, 0.68F, BIG_TOP_CREAM);
+}
+
+bool StationDisplay::controlButtonContains(int16_t x, int16_t y) const {
+  return x >= CONTROL_X && x < CONTROL_X + CONTROL_W && y >= CONTROL_Y &&
+         y < CONTROL_Y + CONTROL_H;
+}
+
 void StationDisplay::drawFittedName(const char* name, int32_t y,
                                     float maxScale) {
   const String value = displayName(name);
@@ -256,19 +281,21 @@ void StationDisplay::drawSession(uint8_t role, const char* name,
   drawFrame();
   drawTopStatus(role, ready, peers);
   if (!pumpOn) {
-    drawPlainCentered("HOWDY", 60, &fonts::FreeSansBold12pt7b, 0.72F,
+    drawPlainCentered("HOWDY", 55, &fonts::FreeSansBold12pt7b, 0.72F,
                       BIG_TOP_CREAM);
-    drawFittedName(name, 91, 0.94F);
+    drawFittedName(name, 82, 0.90F);
     char total[64];
     snprintf(total, sizeof(total), "%.1f GALLONS USED THIS BURN", burnTotal);
-    drawPlainCentered(total, 145, &fonts::FreeSansBold12pt7b, 0.62F,
+    drawPlainCentered(total, 121, &fonts::FreeSansBold12pt7b, 0.58F,
                       BIG_TOP_CREAM);
-    drawFooter("PRESS BUTTON TO START WATER");
+    drawControlButton(false);
+    drawFooter("PHYSICAL BUTTON ALSO WORKS");
     layout_ = Layout::LOGIN;
   } else {
     drawActiveMetrics(role, name, sessionGallons, elapsedMs, ready, peers,
                       true);
-    drawFooter("PRESS BUTTON WHEN DONE", true);
+    drawControlButton(true);
+    drawFooter("PHYSICAL BUTTON ALSO WORKS", true);
     layout_ = Layout::ACTIVE;
   }
   M5.Display.endWrite();
@@ -283,29 +310,29 @@ void StationDisplay::drawActiveMetrics(uint8_t role, const char* name,
   }
 
   if (fullRedraw) {
-    M5.Display.fillRect(20, 47, 280, 142, BIG_TOP_RED);
+    M5.Display.fillRect(20, 47, 280, 89, BIG_TOP_RED);
   } else {
     // Flow pulses can be frequent. Refresh only the hero number, leaving the
     // frame, bulbs, instruction band and static copy untouched.
-    M5.Display.fillRect(20, 78, 280, 62, BIG_TOP_RED);
+    M5.Display.fillRect(20, 75, 280, 61, BIG_TOP_RED);
   }
 
   const uint32_t seconds = elapsedMs / 1000UL;
   if (fullRedraw || seconds != lastActiveSecond_) {
-    M5.Display.fillRect(20, 47, 280, 27, BIG_TOP_RED);
+    M5.Display.fillRect(20, 47, 280, 25, BIG_TOP_RED);
     char heading[64];
     snprintf(heading, sizeof(heading), "%s - %02lu:%02lu",
              displayName(name).c_str(),
              static_cast<unsigned long>(seconds / 60UL),
              static_cast<unsigned long>(seconds % 60UL));
-    drawPlainCentered(heading, 60, &fonts::FreeSansBold12pt7b, 0.72F,
+    drawPlainCentered(heading, 58, &fonts::FreeSansBold12pt7b, 0.68F,
                       BIG_TOP_CREAM);
     lastActiveSecond_ = seconds;
   }
-  drawGallons(sessionGallons, 108, 2, BIG_TOP_GOLD, BIG_TOP_RED);
+  drawGallons(sessionGallons, 96, 2, BIG_TOP_GOLD, BIG_TOP_RED);
   if (fullRedraw) {
-    drawPlainCentered(Config::ROLE_USED_LABELS[role], 162,
-                      &fonts::FreeSansBold12pt7b, 0.68F, BIG_TOP_CREAM);
+    drawPlainCentered(Config::ROLE_USED_LABELS[role], 129,
+                      &fonts::FreeSansBold12pt7b, 0.58F, BIG_TOP_CREAM);
   }
 }
 

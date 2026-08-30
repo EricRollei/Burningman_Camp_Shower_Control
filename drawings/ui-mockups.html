@@ -133,8 +133,8 @@
 <body>
 <div class="page">
   <h1>Camp Shower — M5Stack Tough screen mockups</h1>
-  <p class="lead">Four looks for the same five screens. Everything is drawn at the real <b>320×240</b> and shown at 1.5× so you can judge legibility at arm's length. No animations anywhere — every screen is a single static redraw. Touch is gone: the only inputs are the <b>wristband</b> and the <b>one button</b>.</p>
-  <p class="meta"><b>Flow:</b> Idle → tap wristband → Logged in (<i>press button to start</i>) → Showering (<i>press button when done</i>) → Summary (10 s) → Idle. Tapping a different wristband during someone's shower ends theirs and logs the new person in.</p>
+  <p class="lead">Four looks for the same five screens. Everything is drawn at the real <b>320×240</b> and shown at 1.5× so you can judge legibility at arm's length. No animations anywhere — every screen is a single static redraw. The large touchscreen control mirrors the <b>physical button</b>.</p>
+  <p class="meta"><b>Flow:</b> Idle → tap wristband → Logged in (<i>green Start or physical button</i>) → Showering (<i>red Stop or physical button</i>) → Summary (10 s) → Idle. Tapping a different wristband during someone's shower ends theirs and logs the new person in.</p>
 
   <div id="themes"></div>
 
@@ -176,12 +176,12 @@ const SCREENS = [
       <div class="abs sub" style="top:38px">HOWDY</div>
       <div class="abs title" style="top:56px">COLTON</div>
       <div class="abs sub" style="top:104px">41.2 gallons used so far</div>
-      <div class="abs cta" style="bottom:22px">PRESS BUTTON TO START WATER</div>` },
+      <div class="abs cta" style="bottom:22px">START WATER</div>` },
   { key:'active', label:'3 · Showering', html: `
       <div class="abs hdr">COLTON · 04:12</div>
       <div class="abs huge" style="top:52px">3.42<small>GAL</small></div>
       <div class="abs sub" style="top:140px">used this shower</div>
-      <div class="abs cta stop" style="bottom:22px">PRESS BUTTON WHEN DONE</div>` },
+      <div class="abs cta stop" style="bottom:22px">STOP WATER</div>` },
   { key:'summary', label:'4 · Summary (10 s)', html: `
       <div class="abs hdr">CAMP SHOWER</div>
       <div class="abs title" style="top:34px">ALL DONE!</div>

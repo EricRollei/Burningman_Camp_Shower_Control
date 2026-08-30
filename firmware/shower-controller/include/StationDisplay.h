@@ -16,6 +16,7 @@ class StationDisplay {
   void drawMessage(uint8_t role, const String& title, const String& body,
                    bool ready, uint8_t peers);
   void drawCalibration(uint32_t pulses, bool ready, uint8_t peers);
+  bool controlButtonContains(int16_t x, int16_t y) const;
 
  private:
   enum class Layout { NONE, IDLE, LOGIN, ACTIVE, SUMMARY, MESSAGE, CALIBRATION };
@@ -23,6 +24,7 @@ class StationDisplay {
   void drawFrame();
   void drawTopStatus(uint8_t role, bool ready, uint8_t peers);
   void drawFooter(const char* text, bool pale = false);
+  void drawControlButton(bool pumpOn);
   void drawBigTopText(const char* text, int32_t x, int32_t y, float scale,
                       uint16_t color,
                       lgfx::textdatum::textdatum_t datum =

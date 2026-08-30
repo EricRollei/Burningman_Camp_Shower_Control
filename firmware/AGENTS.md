@@ -72,13 +72,15 @@ Treat pump and relay behavior as safety-critical.
   admin setting. Relay communication failure must attempt all-off, and recovery
   must begin all-off before restoring the accessory role.
 - The pump must never start merely from an RFID scan. A valid active session
-  and a first explicit GPIO14 pump-button press are required. The next press
+  and an explicit press of either the GPIO14 pump button or the on-screen
+  Start button are required. The next physical press or on-screen Stop press
   ends the session and turns the pump off; it does not merely pause the water.
   Flow calibration and an explicitly confirmed, idle-only, five-second raw
   relay test are the only intentional non-session paths that may energize the
   pump channel.
-- Keep the Tough touchscreen display-only. Preserve the post-session gallons
-  and elapsed-time summary before returning to the ready screen.
+- Keep touchscreen water control confined to the large Start/Stop button during
+  an authorized session. Other screen touches must do nothing. Preserve the
+  post-session gallons and elapsed-time summary before returning to ready.
 - Unknown or disabled tags must not open a session or terminate another
   member's session. A different authorized tag ends the prior session with
   reason `HANDOFF` before starting the new member's session.

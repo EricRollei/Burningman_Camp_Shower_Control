@@ -67,12 +67,14 @@ One pass through this list before the burn. Check items off as they pass.
       instead of the control.
 - [ ] **Door display:** confirm the OLED sign still tracks
       OPEN / IN_USE / UNAVAILABLE through a full session.
-- [ ] **Physical-button-only control:** tap an authorized wristband; the Big
-      Top logged-in screen says `PRESS BUTTON TO START WATER` and the pump is
-      off. Tap anywhere on every screen and confirm no relay or session action.
-      Press GPIO14 once: pump on and the footer changes to `PRESS BUTTON WHEN
-      DONE`. Press it again: pump off, summary screen, reason `BUTTON`. Confirm
-      presses without an authorized session and during calibration do nothing.
+- [ ] **Matched physical and touchscreen controls:** tap an authorized
+      wristband; the Big Top logged-in screen shows a large green `START WATER`
+      button and the pump is off. Tap it: pump on and the button becomes a large
+      red `STOP WATER`; tap it again: pump off, summary screen, reason `TOUCH`.
+      Repeat using GPIO14 to start and stop and confirm reason `BUTTON`; then
+      start with one control and stop with the other. Confirm touches outside
+      the on-screen button, presses without an authorized session, and all
+      touches during calibration do nothing.
 - [ ] **Camper display names:** scan a normally named member and confirm the
       Tough shows first name plus last initial (for example `MICHAEL P.`),
       while the admin page retains the full name. Scan a numeric Mad T member
@@ -86,7 +88,7 @@ One pass through this list before the burn. Check items off as they pass.
 - [ ] **Role-specific fill screens:** flash `water_fill` and `rv_fill`; confirm
       the headers, idle prompts, open labels, used-this-fill copy, and thanks
       messages refer to jugs and RV filling as appropriate. Complete one fill
-      on each and confirm the same physical-button-only lifecycle and summary.
+      on each and confirm the same matched physical/touch lifecycle and summary.
 
 ## CampNet (branch `worktree-camp-network`)
 
