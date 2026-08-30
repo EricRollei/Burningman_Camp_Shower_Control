@@ -242,10 +242,20 @@ void discoverI2cDevices() {
 }
 
 void serviceI2cRecovery() {
-  if ((hubReady && relayReady && rfidReady) ||
-      millis() - lastBusProbeMs < 5000 || sessionActive() || calibrationActive ||
+  if (millis() - lastBusProbeMs < 5000 || sessionActive() || calibrationActive ||
       relayTestActive) return;
   lastBusProbeMs = millis();
+  // A reader that lost power comes back with its antenna off and reads 0
+  // forever unless begin() runs again.
+  if (rfidReady && !rfid.healthy()) {
+    Serial.println("[I2C] RFID reader stopped responding; re-initialising");
+    rfidReady = false;
+  }
+  if (hubReady && relayReady && rfidReady) return;
+  // Re-open the hub before probing: a NACK latches I2cHub::healthy_ false (so
+  // findDevice() always fails) and a re-plugged PaHUB resets its channel
+  // register while the cached selectedChannel_ still says otherwise.
+  if (hubReady) hubReady = i2cHub.begin(Wire, hubAddress);
   discoverI2cDevices();
 }
 

@@ -30,7 +30,7 @@ class SessionStorage {
   bool healthy() const { return healthy_; }
 
  private:
-  static constexpr size_t MAX_TOTALS = 64;
+  static constexpr size_t MAX_TOTALS = 100;  // keep >= MemberRegistry::MAX_MEMBERS
   static constexpr size_t MAX_RECENT = 32;
   struct Total {
     char uid[21] = {0};

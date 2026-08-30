@@ -134,7 +134,11 @@ bool saveRegistry() {
 
 bool commitRegistry() {
   const uint32_t previous = registryVersion;
-  ++registryVersion;
+  // Fielded stations bump their version on every admin-page edit. A card
+  // written here must sort above them or CampNet replaces it within 30 s of
+  // the station joining the network. Start the programmer's series high.
+  constexpr uint32_t kProgrammerVersionFloor = 1000000;
+  registryVersion = max(registryVersion, kProgrammerVersionFloor) + 1;
   if (saveRegistry()) return true;
   registryVersion = previous;
   return false;

@@ -20,7 +20,7 @@ constexpr uint8_t kButtonPin = 9;
 constexpr uint32_t kI2cFrequencyHz = 100000;
 constexpr uint32_t kMessageIntervalMs = 3000;
 constexpr uint32_t kDebounceMs = 40;
-constexpr uint32_t kStatusTimeoutMs = 3000;
+constexpr uint32_t kStatusTimeoutMs = 5000;  // STATUS shares the Tough tx FIFO with member/usage bursts
 constexpr uint32_t kRadioRetryIntervalMs = 5000;
 constexpr uint8_t kStationId = DOOR_STATION_ID;
 static_assert(kStationId >= 1 && kStationId <= CampNet::MAX_STATIONS, "DOOR_STATION_ID out of range");
@@ -268,10 +268,9 @@ void setup() {
   pinMode(kButtonPin, INPUT_PULLUP);
 
   if (!display.begin()) {
-    Serial.println("ERROR: SH1107 display was not found");
-    while (true) {
-      delay(1000);
-    }
+    Serial.println("ERROR: SH1107 display was not found; rebooting in 5 s");
+    delay(5000);
+    ESP.restart();
   }
 
   if (display.width() < display.height()) {

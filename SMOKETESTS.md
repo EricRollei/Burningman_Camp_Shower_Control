@@ -53,6 +53,12 @@ One pass through this list before the burn. Check items off as they pass.
 - [ ] **Pulse totals snapshot:** run a shower, note the member's total
       gallons on the admin page, reboot, confirm the total survives and boot
       is quick (`/PULSETOT.CSV` exists on the SD card).
+- [ ] **I2C hot-replug recovery:** while idle, unplug the RFID2 Grove cable
+      (then the PaHUB cable) for 10 s and reseat. Within ~10 s the serial log
+      shows re-initialisation and a wristband tap works again without reboot.
+- [ ] **Audio upload gated:** start a shower, then try a PCM upload from that
+      station's page; it must be refused. Upload while idle must complete
+      (multi-minute song) without the station rebooting.
 - [ ] **Audio upload still works:** upload a channel-1 PCM from the local
       station's page (Speaker card → Upload) while nothing is playing;
       "channel 1 track ready" should be correct immediately after (no reboot

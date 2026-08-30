@@ -17,6 +17,11 @@ bool SettingsStore::begin() {
     roleLimits_[role].gallons = Config::DEFAULT_ROLE_LIMIT_GALLONS[role];
     roleLimits_[role].minutes = Config::DEFAULT_ROLE_LIMIT_MINUTES[role];
   }
+  // save() renames CSV -> BAK -> then TMP -> CSV; a brownout in between leaves
+  // only the BAK. Restore it rather than silently reverting to defaults.
+  if (!SD.exists(Config::SETTINGS_PATH) && SD.exists("/SETTINGS.BAK")) {
+    SD.rename("/SETTINGS.BAK", Config::SETTINGS_PATH);
+  }
   if (SD.exists(Config::SETTINGS_PATH)) {
     File file = SD.open(Config::SETTINGS_PATH, FILE_READ);
     if (!file) return false;

@@ -1,6 +1,7 @@
 #include "AdminServer.h"
 
 #include <WiFi.h>
+#include <esp_task_wdt.h>
 #include <SD.h>
 #include <mbedtls/base64.h>
 
@@ -1178,12 +1179,20 @@ void AdminServer::handleAudioUpload() {
     audioUploadFailed_ = !audioUploadAuthorized_;
     audioUploadBytes_ = 0;
     if (!audioUploadAuthorized_) return;
+    // The multipart body is parsed synchronously inside handleClient(), so the
+    // main loop (session limits, relay-test timeout, WDT feed) is frozen for
+    // the whole transfer. Only accept uploads while the station is idle.
+    if (activeName_[0] != '\0' || calibrationActive_ || relayTestActive_) {
+      audioUploadFailed_ = true;
+      return;
+    }
     speakerAudio_.stop();
     SD.remove(Config::AUDIO_PATH);
     audioUploadFile_ = SD.open(Config::AUDIO_PATH, FILE_WRITE);
     audioUploadFailed_ = !audioUploadFile_;
   } else if (upload.status == UPLOAD_FILE_WRITE) {
     if (!audioUploadAuthorized_ || audioUploadFailed_) return;
+    esp_task_wdt_reset();  // multi-MB PCM uploads outlast the 20 s loop watchdog
     const size_t written = audioUploadFile_.write(upload.buf, upload.currentSize);
     audioUploadBytes_ += written;
     if (written != upload.currentSize) audioUploadFailed_ = true;

@@ -14,7 +14,7 @@ class PulseStorage {
   uint64_t cardSizeMB() const { return cardSizeMB_; }
 
  private:
-  static constexpr size_t MAX_TAGS = 64;
+  static constexpr size_t MAX_TAGS = 100;  // keep >= MemberRegistry::MAX_MEMBERS
   static constexpr size_t UID_SIZE = 21;
 
   struct TagTotal {

@@ -352,7 +352,10 @@ void CampNetLink::resetStaging() {
 void CampNetLink::handleMembers(const CampNet::MembersPacket& packet, int length) {
   Peer& peer = peers_[packet.header.stationId];
   peer.membersVersion = packet.version;
-  members_.noteRemoteVersion(packet.version);
+  // Do not noteRemoteVersion() here: applyRemoteSnapshot() records the version
+  // once the full snapshot is accepted. Recording it per chunk let a station
+  // that missed a chunk (or booted on a blank card) enrol at version+1 with a
+  // stale/empty table and wipe the registry camp-wide.
   // Older than what we hold: nothing to learn (they will adopt ours).
   if (packet.version < members_.version()) return;
   if (packet.chunkCount == 0 || packet.chunkCount > 32 ||
