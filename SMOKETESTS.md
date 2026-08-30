@@ -9,26 +9,38 @@ One pass through this list before the burn. Check items off as they pass.
       run 10+ minutes. Page should stay responsive; controller should not
       need a power cycle.
 - [ ] **Audio quality with buffering:** play a full song and listen for
-      dropouts. Check the **Controller** card (or serial `[AUDIO] song
-      finished ... underruns=N`) — a few underruns right at song start are
+      dropouts. Check the station page's **Controller health** card (or
+      serial `[AUDIO] song finished ... underruns=N`) — a few underruns right at song start are
       fine; a steadily climbing count during playback is a fail.
 - [ ] **Song switching:** twist the music knob between several channels
       mid-song, including back to quiet (position 0). Each switch should be
       clean — no garbled audio, no crash.
 - [ ] **Admin page recovery:** while the page is open, power-cycle the
-      controller. The page should show "Controller not responding —
-      retrying…" and come back on its own once the AP is up (no manual
-      reload needed).
+      controller. The header banner should turn red with "Controller not
+      responding — retrying" and come back on its own once the AP is up (no
+      manual reload needed).
+- [ ] **Admin page walkthrough (phone, in sunlight):** open
+      `http://192.168.4.1/` on a phone. Home shows the orange Enroll button
+      and one tile per powered station with green health dots; nothing on
+      the home screen needs scrolling. Tap each tile and confirm its page
+      opens and `‹ Home` returns; the browser back button also returns.
+      Start a shower: the header banner shows the member, station and live
+      gallons on every page. Tap a member on the Members page, change the
+      shower limit, Save — the row updates without a browser dialog. Tap
+      **End session** once (button reads "Tap again to confirm"), wait 5 s
+      (it reverts), then tap twice — session ends with reason `REMOTE` and a
+      toast appears. Pull the SD card from one station: its home tile turns
+      red with a red SD dot and the header banner says it needs attention.
 - [ ] **Watchdog reboot:** hold the serial monitor open and confirm the
       station reboots itself if the loop ever wedges (hard to force
       naturally — acceptable to just confirm normal operation shows no
       spurious watchdog resets over a long session).
-- [ ] **Remote reboot button:** Controller card → Reboot. Pump shuts off, an
-      in-progress session is logged with reason `REBOOT`, station returns to
-      idle in ~20 s.
-- [ ] **Find speaker button:** with the speaker off, wait until the speaker
-      card shows "search paused" (≈2 min after boot), turn the speaker on,
-      tap **Find speaker** — it should connect within ~15 s.
+- [ ] **Remote reboot button:** station page → Controller health → Reboot
+      controller (tap twice). Pump shuts off, an in-progress session is
+      logged with reason `REBOOT`, station returns to idle in ~20 s.
+- [ ] **Find speaker button:** with the speaker off, wait until the station
+      page's Speaker card shows "search paused" (≈2 min after boot), turn
+      the speaker on, tap **Find speaker** — it should connect within ~15 s.
 - [ ] **BT backoff vs WiFi:** with the speaker unavailable, confirm the
       admin page stays snappy after the first 2 minutes (discovery held).
 - [ ] **Health telemetry:** watch serial `[HEALTH]` lines over an hour of
@@ -36,9 +48,11 @@ One pass through this list before the burn. Check items off as they pass.
 - [ ] **Pulse totals snapshot:** run a shower, note the member's total
       gallons on the admin page, reboot, confirm the total survives and boot
       is quick (`/PULSETOT.CSV` exists on the SD card).
-- [ ] **Audio upload still works:** upload a channel-1 PCM from the admin
-      page while nothing is playing; "all channel tracks ready" should be
-      correct immediately after (no reboot needed).
+- [ ] **Audio upload still works:** upload a channel-1 PCM from the local
+      station's page (Speaker card → Upload) while nothing is playing;
+      "channel 1 track ready" should be correct immediately after (no reboot
+      needed). Another station's page shows the "upload is local only" note
+      instead of the control.
 - [ ] **Door display:** confirm the OLED sign still tracks
       OPEN / IN_USE / UNAVAILABLE through a full session.
 - [ ] **Touch START/STOP backup:** tap a wristband; a large green START circle
@@ -61,17 +75,18 @@ One pass through this list before the burn. Check items off as they pass.
       door 1 flips to IN USE within a second, door 2 stays OPEN. Power off
       Shower 1's Tough — door 1 shows OFFLINE within 3 s.
 - [ ] **Peers visible:** every Tough's screen header shows `READY · 3 NET`
-      with all four powered; the admin Station card lists the other three.
+      with all four powered; the admin home screen shows a tile for each of
+      the other three and Camp settings lists them as online.
 - [ ] **Enroll anywhere:** enroll a wristband on the water-fill station, tap
       it on a shower within 30 s — session opens.
 - [ ] **Camp-wide total on the summary screen:** finish a shower, then a
       water fill with the same wristband — the fill's summary shows the shower
       gallons under "Showers" and the sum under "YOUR TOTAL THIS BURN".
-- [ ] **Limits sync:** change the RV fill limit on Shower 1's admin page; the
+- [ ] **Limits sync:** change the RV fill limit on Shower 1's Camp settings page; the
       RV station's idle footer updates within 30 s and an RV fill ends at the
       new limit.
 - [ ] **Ledger survives reboot:** power-cycle a Tough with the others off;
-      the admin Members card still shows the other stations' gallons
+      the admin Water use page still shows the other stations' gallons
       (`/NETUSAGE.CSV` on the SD card).
 - [ ] **Coexistence:** play a song on a shower while an admin page is open;
       `[HEALTH]` `net_rxdrop` stays at 0 and door signs stay OPEN/IN USE.

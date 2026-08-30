@@ -64,9 +64,10 @@ enrollments) are merged by union so no wristband disappears. Versions live in
 `/MEMBERS.VER` and `SETTINGS.CSV` (`limits_version`).
 
 The header of every screen shows `READY · n NET`, where `n` is the number of
-other stations heard in the last 15 s. The admin page's Station card lists
-each peer with its last-seen time, and `/api/status` exposes `peers`, `net`
-counters, `limits`, `membersVersion` and `features`.
+other stations heard in the last 15 s. The admin page's home screen has a
+tile per peer and its **Camp settings** page lists each one with its
+last-seen time; `/api/status` exposes `peers`, `net` counters, `limits`,
+`membersVersion` and `features`.
 
 ## Session behavior
 
@@ -138,47 +139,85 @@ The network is local and does not provide internet access. To enroll a tag
 
 1. Join `CampShower` from a phone.
 2. Open `http://192.168.4.1/` in the phone browser.
-3. Pick the station whose reader you are standing at under **Enroll on**,
-   enter a member name and tap **Enroll next tag**.
+3. Tap the orange **Enroll a wristband** button, enter a member name, pick
+   the station whose reader you are standing at under **Enroll on**, and tap
+   **Enroll**.
 4. Tap the tag against that Tough's RFID2 reader.
 
-The page title says which station you are physically connected to; that only
-matters for audio upload. `Config::ADMIN_PAGE_PASSWORD` (`include/Config.h`)
-re-enables HTTP Basic login (`admin` / initial `change-me-shower`, salted
-SHA-256 on the SD card, synced between stations) if a page password is ever
-wanted again.
+The header eyebrow (`CAMP SHOWER · ON SHOWER 1`) says which station you are
+physically connected to; that only matters for audio upload.
+`Config::ADMIN_PAGE_PASSWORD` (`include/Config.h`) re-enables HTTP Basic
+login (`admin` / initial `change-me-shower`, salted SHA-256 on the SD card,
+synced between stations) if a page password is ever wanted again; the
+**Camp settings** page then grows an **Admin password** card.
 
-The association is written to `/MEMBERS.CSV` on the microSD card. The setup
-page lists registered tags with their camp-wide usage (showers, water fill,
-RV fill) and any custom shower limit. It supports enrollment, editing,
-disabling, and deletion; every change propagates to the other stations over
-CampNet. Deleting a registration does not delete historical usage.
+The association is written to `/MEMBERS.CSV` on the microSD card. The
+**Members** page lists registered tags with their camp-wide usage and any
+custom shower limit; tapping a member opens an inline editor (name, shower
+limit, can-start toggle, delete). Every change propagates to the other
+stations over CampNet. Deleting a registration does not delete historical
+usage.
 
 ### One page for every station
 
-Signing in to any station's page is enough: the page shows the whole camp.
-The top of the page holds the camp-wide cards (members and usage, station
-limits, enrollment, password). Below them a **station tab bar** lists every
-station that has been heard on CampNet with an online/offline dot and its
-door state (OPEN / IN USE / UNAVAILABLE). Selecting a tab renders that
-station's cards: session status with an **End session** button, flow
-calibration, speaker and music vibe selector (shower stations only), recent
-sessions, and controller health with a reboot button. The selected tab is
-remembered in the browser. Cards grey out while a station is offline.
+Opening any station's page is enough: the page shows the whole camp. It is
+laid out like a small phone app (`drawings/admin-mockups.html`, option C):
+
+- A sticky teal **header** with a live banner that always shows the most
+  important thing happening anywhere on CampNet, in priority order: a
+  wristband enrollment waiting for a tap, sessions in progress (member,
+  station, gallons of limit), a station with a hub/relay/RFID/SD fault, or
+  "All stations open". If the controller stops answering it turns red and
+  says "Controller not responding — retrying" until polling succeeds again.
+- A **home screen** that never scrolls on a phone: the orange **Enroll a
+  wristband** button, then tiles for **Members** (count, disabled count),
+  **Water** (camp-wide gallons and sessions), **one tile per station** heard
+  on CampNet (OPEN / IN USE / ENROLLING / CALIBRATING / UNAVAILABLE / OFFLINE,
+  health dots for hub, relay, RFID, SD and speaker, the active member or the
+  last session), and **Camp settings** (the three station limits). Every
+  tile is also the button that opens its page.
+- **Members**: enroll card (name, **Enroll on** picker, cancel while
+  waiting), searchable member list with the inline editor.
+- **Water use**: total / sessions / average tiles, a per-member table with
+  the shower, water-fill and RV split, and every station's recent sessions.
+- **Station** (one per Tough): live session with **End session**, recent
+  sessions with colour-coded end reasons (`LIMIT`/`HANDOFF` amber,
+  `TIMEOUT`/`REBOOT`/errors red), flow calibration, and on shower stations
+  the speaker (volume slider, test tone, play, stop, find speaker, channel-1
+  upload) and music-knob calibration wizard, then controller health (pills
+  for hub / relay / RFID / SD / speaker, heap, Wi-Fi clients, underruns) with
+  **Reboot controller**. Cards grey out while the station is offline.
+- **Camp settings**: station limits (gallons and minutes per station kind,
+  synced everywhere), CampNet peers with last-seen times and counters, and
+  the password card when enabled.
+
+Destructive buttons (End session, Reboot, Delete) never use browser dialogs:
+the first tap arms the button ("Tap again to confirm") for four seconds and
+the second tap acts. Results show as a toast at the bottom of the screen.
+Pages are addressed by URL hash (`#members`, `#water`, `#station/2`,
+`#camp`), so the browser back button and a reload keep your place. The
+palette is the light cream/teal/orange "daylight" theme for readability in
+the sun; it switches to a dark variant automatically when the phone is in
+dark mode.
+
+To work on the page without hardware, `python3 tools/admin_mock_server.py`
+serves the exact HTML embedded in `src/AdminServer.cpp` with fake
+four-station data at `http://127.0.0.1:8765/` (`--scenario shower|enroll|fault`
+starts it in a particular state, `--local N` pretends to be another station).
 
 - Every station broadcasts a `TELEMETRY` packet (state, health, calibration,
   speaker, session) and a `RECENT` packet (last eight sessions) over CampNet;
   the page reads them from `/api/overview` (`stations`) or `/api/stations`.
 - Buttons post to `/api/command` with the target `station`. For the station
   you are connected to the action runs immediately. For any other station it
-  is sent as an authenticated `COMMAND` packet; the page polls
-  `/api/command?nonce=` for the `ACK` and shows its message (or "No answer
-  from <station>" after about 4 s). Actions that go over the air: enroll /
-  cancel enrollment (the wristband must be tapped on the chosen station's
-  reader, so the Enroll card has an **Enroll on** picker), flow calibration
-  start/stop, music knob calibration, test tone, play, stop, volume, find
-  speaker, end session, and reboot. Audio commands on a fill station answer
-  "not supported".
+  is sent as an authenticated `COMMAND` packet; the page shows "Sending to
+  <station>…", polls `/api/command?nonce=` for the `ACK` and toasts its
+  message (or "No answer from <station>" after about 4 s). Actions that go
+  over the air: enroll / cancel enrollment (the wristband must be tapped on
+  the chosen station's reader, so the Enroll card has an **Enroll on**
+  picker), flow calibration start/stop, music knob calibration, test tone,
+  play, stop, volume, find speaker, end session, and reboot. Audio commands
+  on a fill station answer "not supported".
 - Remote commands are HMAC-signed with `CampNet::SECRET` and de-duplicated by
   nonce, so a stray or replayed packet is dropped. Over the air an admin can
   start flow calibration (which runs that station's pump, still bounded by
@@ -186,8 +225,8 @@ remembered in the browser. Cards grey out while a station is offline.
   reason `REMOTE`). Nothing over the air can open a shower session or turn the
   pump on for one; that still takes a wristband and the physical button.
 - Audio upload is local only: stand at the station whose channel 1 track you
-  want to replace so the phone is on its AP (the page title names it). The
-  upload button is disabled on other tabs.
+  want to replace so the phone is on its AP (the header eyebrow names it).
+  Other stations' pages show a note instead of the upload control.
 - There is no page login by default (the shared Wi-Fi password is the gate).
   If `ADMIN_PAGE_PASSWORD` is enabled, changing the password on any station
   syncs the salted hash to every station (`AUTH` packet).
@@ -209,7 +248,8 @@ remembered in the browser. Cards grey out while a station is offline.
   in-flight guard, so a slow controller degrades to "retrying" instead of a
   frozen page. `/api/health` exposes uptime, heap, Wi-Fi client count, and
   hardware status; the same data is printed to serial every 30 seconds as
-  `[HEALTH]` lines. The **Controller** card includes a remote reboot button.
+  `[HEALTH]` lines. Each station page's **Controller health** card includes
+  a remote reboot button.
 - If the Wi-Fi access point fails to start, it is retried every 30 seconds at
   runtime.
 - `/PULSETOT.CSV` snapshots per-tag totals at each session end so boot replays
