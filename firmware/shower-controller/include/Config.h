@@ -74,6 +74,8 @@ constexpr char PULSE_SNAPSHOT_PATH[] = "/PULSETOT.CSV";
 constexpr char MEMBER_PATH[] = "/MEMBERS.CSV";
 constexpr char SESSION_PATH[] = "/SESSIONS.CSV";
 constexpr char SETTINGS_PATH[] = "/SETTINGS.CSV";
+// One row per boot: reset reason plus relay-latch forensics.
+constexpr char BOOT_LOG_PATH[] = "/BOOT.CSV";
 // Manual dashboard playback/upload targets channel 1.
 constexpr char AUDIO_PATH[] = "/CH1.PCM";
 constexpr uint32_t AUDIO_SAMPLE_RATE = 44100;
@@ -155,6 +157,9 @@ constexpr uint8_t DEFAULT_CHARGER_RELAY = 0;
 constexpr uint8_t DEFAULT_ACCESSORY_RELAY = 0;
 constexpr bool DEFAULT_ACCESSORY_ENABLED = true;
 constexpr uint32_t RELAY_TEST_MS = 5000;
+// Mid-session relay/hub failure: cadence for the safety recovery path that
+// keeps trying to regain relay control and force the pump off.
+constexpr uint32_t RELAY_EMERGENCY_RETRY_MS = 3000;
 constexpr uint32_t MAX_CALIBRATION_MS = 10UL * 60UL * 1000UL;
 
 // CampNet: ESP-NOW broadcast between all stations and door signs. Cadences are
@@ -188,6 +193,13 @@ constexpr uint32_t NET_ACK_REPEAT_MS = 250;
 // controller flicker offline in the admin dashboard. Door signs retain their
 // independent, shorter fail-safe timeout.
 constexpr uint32_t NET_PEER_TIMEOUT_MS = 45000;
+// Dead-man alarm: a peer whose last STATUS reported an active session and
+// that has now been silent this long is presumed frozen with its pump
+// possibly latched on. Twice NET_PEER_TIMEOUT_MS so a Bluetooth-inquiry
+// radio hold or a congestion burst that already flickers a station
+// "offline" cannot raise a false water alarm; the alarm is advisory and a
+// human goes and checks the station.
+constexpr uint32_t NET_DEADMAN_ALARM_MS = 90000;
 constexpr uint32_t NET_STAGING_TIMEOUT_MS = 5000;
 constexpr uint32_t NET_LEDGER_SAVE_DEBOUNCE_MS = 15000;
 constexpr uint32_t NET_BOOT_ANNOUNCE_DELAY_MS = 2000;

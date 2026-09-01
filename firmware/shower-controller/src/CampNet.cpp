@@ -941,6 +941,13 @@ bool CampNetLink::peerOnline(uint8_t stationId) const {
   return peer.seen && millis() - peer.lastSeenMs < Config::NET_PEER_TIMEOUT_MS;
 }
 
+bool CampNetLink::peerDeadmanAlarm(uint8_t stationId) const {
+  if (stationId == 0 || stationId > CampNet::MAX_STATIONS) return false;
+  const Peer& peer = peers_[stationId];
+  return peer.seen && peer.sessionActive &&
+         millis() - peer.lastSeenMs >= Config::NET_DEADMAN_ALARM_MS;
+}
+
 const CampNetLink::Peer& CampNetLink::peer(uint8_t stationId) const {
   static Peer empty;
   return stationId <= CampNet::MAX_STATIONS ? peers_[stationId] : empty;

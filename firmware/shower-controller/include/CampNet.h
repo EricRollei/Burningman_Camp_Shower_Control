@@ -92,6 +92,10 @@ class CampNetLink {
 
   size_t peerCount() const;
   bool peerOnline(uint8_t stationId) const;
+  // True when a station's last STATUS reported an active session and it has
+  // been silent past NET_DEADMAN_ALARM_MS: presumed frozen with its pump
+  // possibly latched on. Clears on any packet from the peer.
+  bool peerDeadmanAlarm(uint8_t stationId) const;
   const Peer& peer(uint8_t stationId) const;
   // Increments whenever a remote members, limits or password update was adopted.
   uint32_t remoteChangeCount() const { return remoteChanges_; }

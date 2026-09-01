@@ -1,6 +1,8 @@
 #include <M5Unified.h>
+#include <SD.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <esp_system.h>
 #include <esp_task_wdt.h>
 
 #include "AdminServer.h"
@@ -17,6 +19,7 @@
 #include "SettingsStore.h"
 #include "SpeakerAudio.h"
 #include "StationDisplay.h"
+#include "StorageWrite.h"
 #include "UsageLedger.h"
 
 namespace {
@@ -80,6 +83,10 @@ bool calibrationActive = false;
 bool relayTestActive = false;
 uint8_t relayTestChannel = 0;
 uint32_t relayTestStartMs = 0;
+bool pumpMaybeStuck = false;
+uint32_t lastEmergencyRecoveryMs = 0;
+uint8_t bootRelayState = 0;
+bool bootRelayStateKnown = false;
 bool screenDirty = true;
 bool buttonRawPressed = false;
 bool buttonStablePressed = false;
@@ -102,7 +109,9 @@ String serialCommand;
 bool sessionActive() { return activeUid[0] != '\0'; }
 
 void markRelayFailure() {
-  relays.allOff();
+  // A failed write leaves the module latched in its last state; only a
+  // successful all-off proves the pump is no longer powered.
+  pumpMaybeStuck = !relays.allOff();
   relayReady = false;
 }
 
@@ -116,7 +125,10 @@ bool setConfiguredRelay(uint8_t channel, bool on) {
 }
 
 void shutdownAllRelays() {
-  if (relayReady && !relays.allOff()) relayReady = false;
+  if (relayReady && !relays.allOff()) {
+    relayReady = false;
+    pumpMaybeStuck = true;
+  }
 }
 
 bool applyAccessoryPolicy() {
@@ -255,7 +267,7 @@ void discoverI2cDevices() {
 
 void serviceI2cRecovery() {
   if (millis() - lastBusProbeMs < 5000 || sessionActive() || calibrationActive ||
-      relayTestActive) return;
+      relayTestActive || pumpMaybeStuck) return;
   lastBusProbeMs = millis();
   // A reader that lost power comes back with its antenna off and reads 0
   // forever unless begin() runs again.
@@ -317,6 +329,54 @@ void rebootController(const char* source) {
   admin.handle();  // Give a pending HTTP response a chance to flush.
   delay(250);
   ESP.restart();
+}
+
+// Safety path: relay control was lost while water could be flowing (active
+// session, calibration, or relay test), or a pump-off write was never
+// confirmed. Keeps retrying until the module answers again; a successful
+// RelayController::begin() forces every output off, which is the pump kill.
+void serviceRelayEmergency() {
+  const bool outputsInUse = sessionActive() || calibrationActive || relayTestActive;
+  const bool controlLost = !relayReady || !hubReady;
+  if (!pumpMaybeStuck && !(controlLost && outputsInUse)) return;
+  const uint32_t now = millis();
+  if (now - lastEmergencyRecoveryMs < Config::RELAY_EMERGENCY_RETRY_MS) return;
+  lastEmergencyRecoveryMs = now;
+  Serial.printf("[SAFETY] relay recovery: hub=%s relay=%s stuck=%s session=%s\n",
+                hubReady ? "ok" : "fail", relayReady ? "ok" : "fail",
+                pumpMaybeStuck ? "yes" : "no", sessionActive() ? "yes" : "no");
+
+  Wire.beginTransmission(hubAddress);
+  if (Wire.endTransmission() != 0) {
+    i2cBusRecover(Wire, Config::I2C_SDA, Config::I2C_SCL, Config::I2C_FREQUENCY);
+  }
+  hubReady = i2cHub.begin(Wire, hubAddress);
+  if (!hubReady) {
+    for (uint8_t address = 0x70; address <= 0x77 && !hubReady; ++address) {
+      hubReady = i2cHub.begin(Wire, address);
+      if (hubReady) hubAddress = address;
+    }
+  }
+  relayReady = false;
+  if (hubReady) {
+    relayChannel = i2cHub.findDevice(Config::RELAY_ADDRESS);
+    relayReady = relayChannel >= 0 &&
+                 relays.begin(Wire, Config::RELAY_ADDRESS, &i2cHub, relayChannel);
+  }
+  if (!relayReady) return;  // keep retrying on the next cadence tick
+  pumpMaybeStuck = false;
+  Serial.println("[SAFETY] relay control recovered; all outputs forced off");
+  if (relayTestActive) {
+    relayTestActive = false;
+    relayTestChannel = 0;
+  }
+  if (calibrationActive) {
+    calibrationActive = false;
+    admin.reportCalibration(false, 0, "Stopped by relay recovery");
+  }
+  if (sessionActive()) endSession("RELAY_RECOVERY");
+  if (!applyAccessoryPolicy()) relayReady = false;
+  screenDirty = true;
 }
 
 void startSession(const String& uid) {
@@ -850,6 +910,59 @@ void handleSerial() {
     else if (serialCommand.length() < 32) serialCommand += value;
   }
 }
+
+const char* resetReasonName(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON: return "POWERON";
+    case ESP_RST_EXT: return "EXT";
+    case ESP_RST_SW: return "SW";
+    case ESP_RST_PANIC: return "PANIC";
+    case ESP_RST_INT_WDT: return "INT_WDT";
+    case ESP_RST_TASK_WDT: return "TASK_WDT";
+    case ESP_RST_WDT: return "WDT";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT: return "BROWNOUT";
+    case ESP_RST_SDIO: return "SDIO";
+    default: return "UNKNOWN";
+  }
+}
+
+// One CSV row per boot: why the chip reset and whether the relay module was
+// still driving the pump when we came up -- the forensic trail for crashes
+// that never reach a serial monitor.
+void appendBootLog(bool sdReady) {
+  const char* reason = resetReasonName(esp_reset_reason());
+  char stateCell[8];
+  if (bootRelayStateKnown) {
+    snprintf(stateCell, sizeof(stateCell), "0x%02X", bootRelayState);
+  } else {
+    strlcpy(stateCell, "NA", sizeof(stateCell));
+  }
+  const uint8_t pump = settings.relayConfig().pump;
+  const bool pumpValid = bootRelayStateKnown && pump >= 1 && pump <= 4;
+  const char* pumpCell = !pumpValid ? "NA"
+      : (bootRelayState & (1U << (4U - pump))) != 0 ? "1" : "0";
+  Serial.printf("[FORENSICS] reset=%s relay_at_boot=%s pump_latched=%s\n",
+                reason, stateCell, pumpCell);
+  if (!sdReady) return;
+  if (!SD.exists(Config::BOOT_LOG_PATH)) {
+    File file = SD.open(Config::BOOT_LOG_PATH, FILE_WRITE);
+    if (!file) return;
+    StorageWrite::line(file,
+        "uptime_ms,reset_reason,relay_state_at_boot,pump_was_latched,hub,relay,rfid,sd");
+    file.flush();
+    file.close();
+  }
+  File file = SD.open(Config::BOOT_LOG_PATH, FILE_APPEND);
+  if (!file) return;
+  StorageWrite::formatted(file, "%lu,%s,%s,%s,%s,%s,%s,%s\n",
+                          static_cast<unsigned long>(millis()), reason, stateCell,
+                          pumpCell, hubReady ? "ok" : "fail",
+                          relayReady ? "ok" : "fail", rfidReady ? "ok" : "fail",
+                          sdReady ? "ok" : "fail");
+  file.flush();
+  file.close();
+}
 }
 
 void setup() {
@@ -864,10 +977,12 @@ void setup() {
 
   // A watchdog reset does not power-cycle the external 4Relay module. Force it
   // off before display, SD replay, LEDs, radio or Bluetooth can delay boot.
-  Wire.end();
-  delay(10);
-  Wire.begin(Config::I2C_SDA, Config::I2C_SCL, Config::I2C_FREQUENCY);
+  // A crashed transfer can leave a slave holding SDA low, which would block
+  // the relay-off below; clock the bus clear before the first transaction.
+  i2cBusRecover(Wire, Config::I2C_SDA, Config::I2C_SCL, Config::I2C_FREQUENCY);
   discoverI2cDevices();
+  bootRelayStateKnown = relays.preClearStateKnown();
+  bootRelayState = relays.preClearState();
 
   M5.Display.setRotation(1);
   stationDisplay.begin();
@@ -900,6 +1015,7 @@ void setup() {
   // power. Pump and charger remain off.
   shutdownAllRelays();
   if (relayReady && !applyAccessoryPolicy()) relayReady = false;
+  appendBootLog(sdReady);
   const bool netReady = campNet.begin();
   const bool adminReady = netReady && admin.begin();
   bool audioReady = false;
@@ -908,13 +1024,13 @@ void setup() {
     audioReady = speakerAudio.begin();
   }
 
-  Serial.printf("[BOOT] station=%u role=%s board=%u ext5v=%s sd=%s members=%s settings=%s sessions=%s ledger=%s hub=%s relay=%s rfid=%s net=%s admin=%s\n",
+  Serial.printf("[BOOT] station=%u role=%s board=%u ext5v=%s sd=%s members=%s settings=%s sessions=%s ledger=%s hub=%s relay=%s rfid=%s net=%s admin=%s reset=%s\n",
                 Config::STATION_ID_VALUE, CampNet::roleName(Config::STATION_ROLE_VALUE),
                 static_cast<unsigned>(M5.getBoard()), M5.Power.getExtOutput()?"on":"off",
                 sdReady?"ok":"fail", membersReady?"ok":"fail", settingsReady?"ok":"fail",
                 sessionsReady?"ok":"fail", ledgerReady?"ok":"fail", hubReady?"ok":"fail",
                 relayReady?"ok":"fail", rfidReady?"ok":"fail", netReady?"ok":"fail",
-                adminReady?"ok":"fail");
+                adminReady?"ok":"fail", resetReasonName(esp_reset_reason()));
   Serial.printf("[WEB] ssid=%s address=http://%s/ page_password=%s\n", Config::WIFI_AP_NAME,
                 admin.address().c_str(), Config::ADMIN_PAGE_PASSWORD ? "on" : "off");
   Serial.printf("[NET] channel=%u door_sign=%s members_version=%lu limits_version=%lu\n",
@@ -956,6 +1072,7 @@ void loop() {
   if (Config::HAS_LED_STRIP) lightShow.handle(speakerAudio, sessionActive());
   serviceCampNet();
   serviceI2cRecovery();
+  serviceRelayEmergency();
   handleRelayAdmin();
   serviceReliability();
   handlePumpButton();

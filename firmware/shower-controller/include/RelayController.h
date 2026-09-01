@@ -14,14 +14,21 @@ class RelayController {
   bool isOn(uint8_t channel) const;
   bool healthy() const { return healthy_; }
   uint8_t state() const { return state_; }
+  // CONTROL register as read at the start of begin(), before the forced
+  // all-off: boot forensics for "was the pump still latched on?".
+  bool preClearStateKnown() const { return preClearKnown_; }
+  uint8_t preClearState() const { return preClearState_; }
 
  private:
   bool writeRegister(uint8_t reg, uint8_t value);
+  bool readRegister(uint8_t reg, uint8_t& value);
 
   TwoWire* wire_ = nullptr;
   uint8_t address_ = 0;
   uint8_t state_ = 0;
   I2cHub* hub_ = nullptr;
   int8_t channel_ = -1;
+  uint8_t preClearState_ = 0;
+  bool preClearKnown_ = false;
   bool healthy_ = false;
 };

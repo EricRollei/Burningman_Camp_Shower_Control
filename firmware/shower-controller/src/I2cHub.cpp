@@ -29,3 +29,32 @@ int8_t I2cHub::findDevice(uint8_t address) {
   }
   return -1;
 }
+
+bool i2cBusRecover(TwoWire& wire, uint8_t sda, uint8_t scl, uint32_t frequency) {
+  wire.end();
+  delay(2);
+  pinMode(sda, INPUT_PULLUP);
+  pinMode(scl, OUTPUT_OPEN_DRAIN);
+  digitalWrite(scl, HIGH);
+  delayMicroseconds(5);
+  if (digitalRead(sda) == LOW) {
+    for (uint8_t pulse = 0; pulse < 16 && digitalRead(sda) == LOW; ++pulse) {
+      digitalWrite(scl, LOW);
+      delayMicroseconds(5);
+      digitalWrite(scl, HIGH);
+      delayMicroseconds(5);
+    }
+    // STOP condition (SDA rising while SCL is high) releases every slave.
+    pinMode(sda, OUTPUT_OPEN_DRAIN);
+    digitalWrite(sda, LOW);
+    delayMicroseconds(5);
+    digitalWrite(sda, HIGH);
+    delayMicroseconds(5);
+  }
+  const bool released = digitalRead(sda) == HIGH;
+  pinMode(sda, INPUT_PULLUP);
+  pinMode(scl, INPUT_PULLUP);
+  wire.begin(static_cast<int>(sda), static_cast<int>(scl), frequency);
+  if (!released) Serial.println("[I2C] bus recovery failed; SDA still held low");
+  return released;
+}

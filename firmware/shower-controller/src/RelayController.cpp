@@ -22,6 +22,10 @@ bool RelayController::begin(TwoWire& wire, uint8_t address, I2cHub* hub, int8_t 
   healthy_ = wire_->endTransmission() == 0;
   if (!healthy_) return false;
 
+  // Capture what the module was still driving before the forced all-off; a
+  // controller crash leaves the last commanded state latched here.
+  preClearKnown_ = readRegister(CONTROL_REGISTER, preClearState_);
+
   // Auto mode makes each indicator LED follow its relay.
   healthy_ = writeRegister(MODE_REGISTER, AUTO_LED_MODE) && allOff();
   return healthy_;
@@ -65,4 +69,16 @@ bool RelayController::writeRegister(uint8_t reg, uint8_t value) {
   wire_->write(reg);
   wire_->write(value);
   return wire_->endTransmission() == 0;
+}
+
+bool RelayController::readRegister(uint8_t reg, uint8_t& value) {
+  if (hub_ != nullptr && !hub_->select(channel_)) return false;
+  wire_->beginTransmission(address_);
+  wire_->write(reg);
+  if (wire_->endTransmission(false) != 0) return false;
+  if (wire_->requestFrom(address_, static_cast<uint8_t>(1)) != 1) return false;
+  const int data = wire_->read();
+  if (data < 0) return false;
+  value = static_cast<uint8_t>(data);
+  return true;
 }

@@ -62,17 +62,18 @@ const st={view:'home',sid:0,R:null,edit:null,edName:'',edAllowance:0,edEnabled:t
 let O=null,S=[],last='',lastHead='',busy=false,forceNext=false,down=false,lastOk=0,toastT=0;
 const typing=()=>{const a=document.activeElement;return !!a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)&&a.type!='file'&&$('#body').contains(a)};
 const nm=id=>(S.find(x=>x.id==id)||{}).name||'Station '+id,dur=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0'),up=s=>{const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m'};
-const rtag=r=>`<span class="tag ${/LIMIT|HANDOFF/.test(r)?'warn':/TIMEOUT|REBOOT|ERROR/.test(r)?'bad':''}">${esc(r)}</span>`;
+const rtag=r=>`<span class="tag ${/LIMIT|HANDOFF/.test(r)?'warn':/TIMEOUT|REBOOT|ERROR|RECOVERY/.test(r)?'bad':''}">${esc(r)}</span>`;
 const cbtn=(id,label,cls,x='',dis=false)=>`<button class="${cls}${st.cf===id?' arm':''}" data-a="cf" data-v="${id}" data-x="${x}"${dis?' disabled':''}>${st.cf===id?'Tap again to confirm':label}</button>`;
 const tile=(n,u,l)=>`<div class="tile static"><div><div class="n">${n}${u?`<small>${u}</small>`:''}</div><div class="l">${l}</div></div></div>`;
 const lim=s=>{const o={};LIM.forEach(([n,k])=>{o[k+'Gal']=s.limits[k].gal;o[k+'Min']=s.limits[k].min});return o};
 function toast(m,bad,stick){const t=$('#toast');t.textContent=m;t.className='on'+(bad?' bad':'');clearTimeout(toastT);if(!stick)toastT=setTimeout(()=>t.className='',bad?5000:3000)}
 async function post(path,data={}){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});const j=await r.json();if(!r.ok)throw Error(j.message||'Request failed');return j}
 async function cmd(action,extra={},station=st.sid||O.status.stationId){try{const j=await post('/api/command',{station,action,...extra});let m=j.message,ok=true;if(j.pending){toast('Sending to '+nm(station)+'…',false,true);m='';for(let i=0;i<13&&!m;i++){await new Promise(x=>setTimeout(x,300));const q=await(await fetch('/api/command?nonce='+j.nonce)).json();if(q.state=='done'){ok=q.ok;m=(q.ok?'':'Rejected: ')+(q.message||'')}else if(q.state!='pending')break}if(!m){ok=false;m='No answer from '+nm(station)}}toast(nm(station)+': '+m,!ok);refresh(true);return ok}catch(e){toast(e.message,true);return false}}
-function stationState(x){const t=x.telemetry;return !x.online?'OFFLINE':t.calibrationActive?'CALIBRATING':(t.relay||{}).testActive?'RELAY TEST':t.enrollmentPending?'ENROLLING':t.session.active?'IN USE':DS[t.session.doorState]||'?'}
-function stationCls(x){const t=x.telemetry,h=t.health;return !x.online?'dim':!(h.hub&&h.relay&&h.rfid&&h.sd)||t.session.doorState==2?'bad':t.session.active||t.calibrationActive||t.enrollmentPending||(t.relay||{}).testActive?'warn':''}
-function head(){const s=O&&O.status,t={home:'Shower Admin',members:'Members',water:'Water use',camp:'Camp settings',station:nm(st.sid)}[st.view];let live;
-if(!O)live=`<div class="live warn"><span class="pulse"></span><span>Connecting…<small>waiting for the controller</small></span></div>`;
+function stationState(x){const t=x.telemetry;return x.alarm?'DARK MID-SESSION':!x.online?'OFFLINE':t.calibrationActive?'CALIBRATING':(t.relay||{}).testActive?'RELAY TEST':t.enrollmentPending?'ENROLLING':t.session.active?'IN USE':DS[t.session.doorState]||'?'}
+function stationCls(x){const t=x.telemetry,h=t.health;return x.alarm?'bad':!x.online?'dim':!(h.hub&&h.relay&&h.rfid&&h.sd)||t.session.doorState==2?'bad':t.session.active||t.calibrationActive||t.enrollmentPending||(t.relay||{}).testActive?'warn':''}
+function head(){const s=O&&O.status,t={home:'Shower Admin',members:'Members',water:'Water use',camp:'Camp settings',station:nm(st.sid)}[st.view];let live;const al=S.filter(x=>x.alarm);
+if(al.length)live=`<div class="live bad"><span class="pulse"></span><span>⚠ ${al.map(x=>esc(x.name)).join(' · ')} dark mid-session — CHECK WATER<small>${al.map(x=>`${esc(x.telemetry.session.name)||'session'} · ${F(x.telemetry.session.gallons,1)} gal when lost · silent ${up(x.lastSeenS)}`).join(' · ')}</small></span></div>`;
+else if(!O)live=`<div class="live warn"><span class="pulse"></span><span>Connecting…<small>waiting for the controller</small></span></div>`;
 else if(Date.now()-lastOk>7000)live=`<div class="live bad"><span class="pulse"></span><span>Controller not responding<small>retrying — last update ${Math.round((Date.now()-lastOk)/1000)} s ago</small></span></div>`;
 else{const w=S.find(x=>x.online&&x.telemetry.enrollmentPending),act=S.filter(x=>x.online&&x.telemetry.session.active),on=S.filter(x=>x.online);let bad;
 if(w)live=`<div class="live warn"><span class="pulse"></span><span>Waiting for ${esc(w.telemetry.pendingName)}'s wristband<small>tap it on ${esc(w.name)}'s reader now</small></span></div>`;
@@ -85,7 +86,7 @@ return `<button class="cta" data-a="enroll">＋ Enroll a wristband</button><div 
 <div class="tile" data-a="go" data-v="members"><div class="ic">Members</div><div><div class="n">${m.length}</div><div class="l">${dis?`<b>${dis} disabled</b>`:m.length?'all enabled':'none enrolled yet'}</div></div></div>
 <div class="tile" data-a="go" data-v="water"><div class="ic">Water</div><div><div class="n">${F(g,1)}<small>gal</small></div><div class="l">${n} session${n==1?'':'s'} this burn</div></div></div>
 ${S.map(x=>{const t=x.telemetry,se=t.session,h=t.health,d=[h.hub,h.relay,h.rfid,h.sd].concat(t.features.music?[t.speaker=='connected']:[]);
-const l=!x.online?`last seen ${up(x.lastSeenS)} ago`:se.active?`<b>${esc(se.name)}</b> · ${F(se.gallons,1)} of ${F(se.limit,0)} gal`:t.enrollmentPending?`waiting for <b>${esc(t.pendingName)}</b>`:x.recent.length?`last <b>${F(x.recent[0].gallons,1)} gal</b> · up ${up(h.uptimeS)}`:`up ${up(h.uptimeS)} · no sessions yet`;
+const l=x.alarm?`<b>${esc(se.name)}</b> · ${F(se.gallons,1)} gal · dark ${up(x.lastSeenS)}`:!x.online?`last seen ${up(x.lastSeenS)} ago`:se.active?`<b>${esc(se.name)}</b> · ${F(se.gallons,1)} of ${F(se.limit,0)} gal`:t.enrollmentPending?`waiting for <b>${esc(t.pendingName)}</b>`:x.recent.length?`last <b>${F(x.recent[0].gallons,1)} gal</b> · up ${up(h.uptimeS)}`:`up ${up(h.uptimeS)} · no sessions yet`;
 return `<div class="tile ${stationCls(x)}" data-a="go" data-v="station" data-i="${x.id}"><div class="ic">${esc(x.name)}${x.local?' · here':''}</div><div><div class="n txt">${stationState(x)}</div><div class="dots">${d.map(v=>`<i class="${!x.online?'dim':v?'':'bad'}"></i>`).join('')}</div><div class="l">${l}</div></div></div>`}).join('')}
 <div class="tile" data-a="go" data-v="camp"><div class="ic">Camp settings</div><div><div class="n txt">${F(L.shower.gal,0)} · ${F(L.water.gal,0)} · ${F(L.rv.gal,0)} gal</div><div class="l">shower · water · RV limits</div></div></div></div>`}
 function members(){const m=[...O.members].sort((a,b)=>a.name.localeCompare(b.name)),w=S.find(x=>x.online&&x.telemetry.enrollmentPending),q=st.q.trim().toLowerCase(),list=q?m.filter(x=>x.name.toLowerCase().includes(q)):m,at=st.at||O.status.stationId;
@@ -691,7 +692,7 @@ String AdminServer::recentJson(const CampNet::RecentPacket& r) const {
 
 String AdminServer::stationsJson() const {
   String body;
-  body.reserve(1900 * (net_.peerCount() + 1) + 4);
+  body.reserve(1920 * (net_.peerCount() + 1) + 4);
   body += '[';
   bool first = true;
   CampNet::TelemetryPacket telemetry;
@@ -718,6 +719,7 @@ String AdminServer::stationsJson() const {
     body += ",\"role\":" + String(role) + ",\"roleName\":\"" + String(CampNet::roleName(role)) + "\"";
     body += ",\"local\":"; body += boolJson(local);
     body += ",\"online\":"; body += boolJson(local || net_.peerOnline(id));
+    body += ",\"alarm\":"; body += boolJson(!local && net_.peerDeadmanAlarm(id));
     body += ",\"lastSeenS\":" + String(local ? 0UL : (millis() - peer.lastSeenMs) / 1000UL);
     body += ",\"telemetry\":";
     body += telemetryJson(telemetry);
