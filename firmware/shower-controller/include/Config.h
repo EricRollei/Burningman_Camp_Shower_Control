@@ -6,6 +6,19 @@
 
 namespace Config {
 
+#ifndef FIRMWARE_GIT_COMMIT
+#define FIRMWARE_GIT_COMMIT "unknown"
+#endif
+#ifndef FIRMWARE_GIT_DIRTY
+#define FIRMWARE_GIT_DIRTY 1
+#endif
+constexpr char FIRMWARE_COMMIT[] = FIRMWARE_GIT_COMMIT;
+constexpr bool FIRMWARE_DIRTY = FIRMWARE_GIT_DIRTY != 0;
+constexpr uint8_t OTA_METADATA_VERSION = 1;
+constexpr uint32_t OTA_ARM_TIMEOUT_MS = 60000;
+constexpr uint32_t OTA_HEALTHY_AFTER_MS = 5000;
+constexpr uint32_t OTA_ROLLBACK_AFTER_MS = 30000;
+
 // Tough Grove Port A / rear Tough.EXT I2C connector.
 constexpr uint8_t I2C_SDA = 32;
 constexpr uint8_t I2C_SCL = 33;

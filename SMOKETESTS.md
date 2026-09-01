@@ -157,6 +157,40 @@ One pass through this list before the burn. Check items off as they pass.
 
 ## (add in-flight work below)
 
+## Tough OTA through Tawdry
+
+- [ ] **One-time USB bootstrap:** flash each Tough's labeled profile over USB,
+      reboot, and confirm `/api/ota/status` reports the matching station id,
+      role, Git commit, inactive-slot capacity, and `idle` state.
+- [ ] **Successful shower and fill OTA:** use Tawdry over Wi-Fi on one shower
+      and one fill station. Confirm it builds before the Wi-Fi prompt, identifies
+      the target, commands every relay off, shows the update message, uploads,
+      reboots, waits through provisional boot, and reports the new commit only
+      after boot health validation. Confirm SD settings and history persist.
+- [ ] **Wrong profile and roaming refused:** select a profile that does not
+      match the connected Tough and confirm no maintenance state or relay
+      change occurs. During post-reboot verification, deliberately join a
+      different Tough and confirm Tawdry reports the identity mismatch rather
+      than success.
+- [ ] **Busy states refused without disruption:** attempt prepare during an
+      active water session, enrollment, flow calibration, music calibration,
+      and a raw relay test. Each attempt must be rejected without ending the
+      operation or changing relay state.
+- [ ] **Maintenance interlocks:** prepare while idle and, during the armed
+      window, tap RFID, GPIO14 and the screen and send local and remote relay,
+      calibration and reboot commands. No session or output may start; the door
+      sign should show UNAVAILABLE or OFFLINE. Let preparation expire and
+      confirm pump/charger stay off and only configured accessory power returns.
+- [ ] **Interrupted/corrupt upload:** disconnect Wi-Fi or power during upload,
+      then reboot. The prior firmware must remain active and all relays must
+      start off. Repeat with a deliberately wrong SHA-256 and confirm the image
+      is rejected without changing the boot slot.
+- [ ] **Automatic rollback:** from a known-good OTA image, upload a temporary
+      test build that cannot reach the boot health confirmation. Confirm the
+      watchdog/reset path returns to the prior slot, relays remain off through
+      both boots, and Tawdry reports rollback rather than success. Do not retain
+      the intentionally failing build in production.
+
 ## Admin relay and power configuration
 
 - [ ] **Upgrade defaults are inert:** boot with an existing `SETTINGS.CSV` that

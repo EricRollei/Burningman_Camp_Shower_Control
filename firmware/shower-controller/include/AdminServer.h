@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
+#include <mbedtls/sha256.h>
 
 #include "CampNet.h"
 #include "MemberRegistry.h"
@@ -38,6 +39,7 @@ class AdminServer {
                        uint8_t nextPosition, const String& message);
   void reportHardware(bool hubReady, bool relayReady, bool rfidReady);
   void reportRelays(uint8_t state, bool testActive, uint8_t testChannel);
+  void reportOtaBootPending(bool pending) { otaBootPending_ = pending; }
   bool takeRelayPolicyApplyRequest();
   bool takeRelayTestStartRequest(uint8_t& channel);
   bool takeRelayTestStopRequest();
@@ -48,6 +50,11 @@ class AdminServer {
   bool takeSpeakerSearchRequest();
   // Set by a remote END SESSION command; main ends the session with "REMOTE".
   bool takeEndSessionRequest();
+  bool takeOtaPrepareRequest();
+  void confirmOtaPrepared(bool relaysOff);
+  bool takeOtaRecoveryRequest();
+  bool takeOtaRebootRequest();
+  bool otaMaintenanceActive() const;
   bool started() const { return started_; }
 
  private:
@@ -78,6 +85,11 @@ class AdminServer {
   void changePassword();
   void setRoleLimits();
   void handleAudioUpload();
+  void handleOtaPrepare();
+  void handleOtaUpload();
+  void sendOtaStatus();
+  void failOta(const String& message);
+  const char* otaStateName() const;
   bool authorize();
   void sendJsonMessage(int code, bool ok, const String& message);
   static String jsonEscape(const String& value);
@@ -137,4 +149,24 @@ class AdminServer {
   bool audioUploadAuthorized_ = false;
   bool audioUploadFailed_ = false;
   size_t audioUploadBytes_ = 0;
+
+  enum class OtaState { IDLE, PREPARING, ARMED, UPLOADING, SUCCESS, ERROR };
+  OtaState otaState_ = OtaState::IDLE;
+  bool otaPrepareRequested_ = false;
+  bool otaRecoveryRequested_ = false;
+  bool otaRebootRequested_ = false;
+  bool otaUploadAccepted_ = false;
+  bool otaUploadFailed_ = false;
+  bool otaShaStarted_ = false;
+  uint32_t otaExpiresMs_ = 0;
+  size_t otaExpectedBytes_ = 0;
+  size_t otaReceivedBytes_ = 0;
+  char otaExpectedSha256_[65] = {0};
+  char otaCommit_[11] = {0};
+  bool otaDirty_ = false;
+  char otaToken_[33] = {0};
+  String otaMessage_ = "Ready";
+  bool otaBootPending_ = false;
+  uint32_t otaBootId_ = 0;
+  mbedtls_sha256_context otaSha_;
 };

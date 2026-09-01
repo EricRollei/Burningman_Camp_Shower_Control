@@ -1,4 +1,5 @@
 import io
+import hashlib
 import json
 import subprocess
 import sys
@@ -25,6 +26,17 @@ class ProfileTests(unittest.TestCase):
     self.assertEqual(command[0:2], ["/usr/local/bin/pio", "run"])
     self.assertIn("/repo/firmware/door-display", command)
     self.assertEqual(command[-6:], ["--environment", "door2", "--target", "upload", "--upload-port", "/dev/cu.test"])
+
+  def test_build_command_uses_selected_environment_without_upload_target(self):
+    command = uploader.build_command("pio", Path("/repo"), uploader.PROFILES[2])
+    self.assertEqual(command[-2:], ["--environment", "water_fill"])
+    self.assertNotIn("upload", command)
+
+  def test_tough_profiles_carry_station_identity(self):
+    self.assertEqual(
+        [(profile.station_id, profile.role) for profile in uploader.TOUGH_PROFILES],
+        [(1, 0), (2, 0), (3, 1), (4, 2)],
+    )
 
   def test_validate_profile_finds_declared_environment(self):
     with tempfile.TemporaryDirectory() as directory:
@@ -150,6 +162,140 @@ class VersionTests(unittest.TestCase):
     run_git.side_effect = ["feature", "0123456789", " M file"]
     version = uploader.git_version(Path("/repo"))
     self.assertEqual(version, uploader.GitVersion("feature", "0123456789", True))
+
+
+class OtaTests(unittest.TestCase):
+  def controller(self, **overrides):
+    values = {
+        "station_id": 1,
+        "role": 0,
+        "state": "idle",
+        "message": "Ready",
+        "max_image_bytes": 6_000_000,
+        "uptime_ms": 100_000,
+        "boot_id": 1234,
+        "boot_pending": False,
+        "commit": "0123456789",
+        "dirty": False,
+    }
+    values.update(overrides)
+    return uploader.OtaController(**values)
+
+  def artifact(self, path=Path("/tmp/firmware.bin"), **overrides):
+    values = {
+        "path": path,
+        "environment": "shower1",
+        "station_id": 1,
+        "role": 0,
+        "commit": "abcdef0123",
+        "dirty": False,
+        "branch": "main",
+        "size": 2_000_000,
+        "sha256": "a" * 64,
+    }
+    values.update(overrides)
+    return uploader.FirmwareArtifact(**values)
+
+  def test_parse_ota_controller(self):
+    payload = {
+        "stationId": 3,
+        "role": 1,
+        "state": "armed",
+        "message": "Ready for firmware upload",
+        "maxImageBytes": 6_400_000,
+        "uptimeMs": 1234,
+        "bootId": 4567,
+        "bootPending": True,
+        "firmware": {"commit": "0123456789", "dirty": False},
+    }
+    target = uploader.parse_ota_controller(payload)
+    self.assertEqual((target.station_id, target.role), (3, 1))
+    self.assertTrue(target.boot_pending)
+
+  def test_wrong_station_is_refused(self):
+    with self.assertRaisesRegex(uploader.UploaderError, "selected Shower 1"):
+      uploader.verify_ota_target(
+          uploader.PROFILES[0], self.artifact(), self.controller(station_id=2)
+      )
+
+  def test_busy_station_is_refused(self):
+    with self.assertRaisesRegex(uploader.UploaderError, "not ready"):
+      uploader.verify_ota_target(
+          uploader.PROFILES[0], self.artifact(), self.controller(state="uploading")
+      )
+
+  def test_oversize_image_is_refused(self):
+    with self.assertRaisesRegex(uploader.UploaderError, "inactive OTA slot"):
+      uploader.verify_ota_target(
+          uploader.PROFILES[0], self.artifact(size=7_000_000), self.controller()
+      )
+
+  def test_load_artifact_checks_identity_and_hashes_binary(self):
+    with tempfile.TemporaryDirectory() as directory:
+      repo = Path(directory)
+      build = repo / "firmware/shower-controller/.pio/build/shower1"
+      build.mkdir(parents=True)
+      binary = b"firmware bytes"
+      (build / "firmware.bin").write_bytes(binary)
+      metadata = {
+          "environment": "shower1",
+          "stationId": 1,
+          "role": 0,
+          "commit": "0123456789",
+          "dirty": False,
+          "branch": "main",
+          "firmware": "firmware.bin",
+      }
+      (build / "firmware-metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+      artifact = uploader.load_firmware_artifact(repo, uploader.PROFILES[0])
+      self.assertEqual(artifact.sha256, hashlib.sha256(binary).hexdigest())
+      self.assertEqual(artifact.size, len(binary))
+
+  @mock.patch("firmware_uploader.time.sleep")
+  @mock.patch("firmware_uploader.read_ota_controller")
+  @mock.patch("firmware_uploader.request_json")
+  def test_prepare_waits_until_controller_is_armed(self, request_json, read_status, _sleep):
+    request_json.return_value = {"ok": True, "token": "a" * 32}
+    read_status.side_effect = [self.controller(state="preparing"), self.controller(state="armed")]
+    token = uploader.prepare_ota("controller", self.artifact())
+    self.assertEqual(token, "a" * 32)
+
+  @mock.patch("firmware_uploader.http.client.HTTPConnection")
+  def test_upload_streams_multipart_firmware(self, connection_type):
+    response = mock.Mock(status=200)
+    response.read.return_value = b'{"ok":true}'
+    connection = connection_type.return_value
+    connection.getresponse.return_value = response
+    with tempfile.TemporaryDirectory() as directory:
+      binary = b"firmware-payload" * 2048
+      path = Path(directory) / "firmware.bin"
+      path.write_bytes(binary)
+      stream = io.StringIO()
+      uploader.upload_ota("controller", self.artifact(path=path, size=len(binary)), "a" * 32, stream)
+    sent = b"".join(call.args[0] for call in connection.send.call_args_list)
+    self.assertIn(binary, sent)
+    self.assertIn(b'name="firmware"', sent)
+    self.assertIn("100%", stream.getvalue())
+
+  @mock.patch("firmware_uploader.time.sleep")
+  @mock.patch("firmware_uploader.read_ota_controller")
+  def test_wait_requires_boot_health_confirmation(self, read_status, _sleep):
+    read_status.side_effect = [
+        self.controller(commit="abcdef0123", boot_pending=True, boot_id=5678, uptime_ms=1000),
+        self.controller(commit="abcdef0123", boot_pending=False, boot_id=5678, uptime_ms=7000),
+    ]
+    result = uploader.wait_for_ota(
+        "controller", uploader.PROFILES[0], self.artifact(), 1234, io.StringIO()
+    )
+    self.assertFalse(result.boot_pending)
+
+  @mock.patch("firmware_uploader.read_ota_controller")
+  def test_wait_reports_rollback(self, read_status):
+    read_status.return_value = self.controller(commit="0123456789", boot_id=5678, uptime_ms=1000)
+    with self.assertRaisesRegex(uploader.UploaderError, "rolled back"):
+      uploader.wait_for_ota(
+          "controller", uploader.PROFILES[0], self.artifact(), 1234, io.StringIO()
+      )
 
 
 if __name__ == "__main__":

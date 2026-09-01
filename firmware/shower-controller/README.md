@@ -365,14 +365,43 @@ added later once the RTC policy is decided.
 
 ## Build and upload
 
-For routine flashing, the repository's terminal uploader provides labeled
-profiles, USB-port selection, confirmation, and upload progress:
+For routine flashing and Wi-Fi updates, the repository's `tawdry` terminal
+uploader provides labeled profiles, target verification, confirmation and
+progress:
 
 ```sh
 python3 firmware/uploader/firmware_uploader.py
 ```
 
 See [`firmware/uploader/README.md`](../uploader/README.md) for the full workflow.
+
+### Tough firmware updates over Wi-Fi
+
+Each Tough must receive the OTA-capable firmware once over USB. After that,
+run `tawdry`, choose **Update nearby Tough over Wi-Fi**, and select the labeled
+station. Tawdry builds while the laptop still has its normal network, then
+prompts you to join the controller Wi-Fi. It reads the connected Tough's
+station id and role and refuses to upload a mismatched `shower1`, `shower2`,
+`water_fill`, or `rv_fill` image.
+
+OTA is local to the Tough at `192.168.4.1`; firmware is never forwarded over
+CampNet or downloaded from the internet. Access relies on the protected local
+Wi-Fi, just like the admin page. USB remains the recovery path, and the NanoC6
+door displays remain USB-only.
+
+An update is accepted only while the station is completely idle, with the
+relay module available. Preparing an update commands all relays off, stops
+audio and lighting, marks the station unavailable, and blocks RFID, buttons,
+calibration and local or remote relay actions. The upload is written to the
+inactive application slot and checked against its declared size, ESP image
+header and SHA-256 before it can boot. An interrupted or rejected transfer
+keeps the current image and restores only the configured accessory policy.
+
+After reboot, the new image remains provisional until its main loop, CampNet
+and admin server have been healthy for five seconds. It is then marked valid;
+failure to become healthy within 30 seconds triggers bootloader rollback to
+the previous slot. Tawdry waits for this result and reports success, rollback,
+wrong-station roaming, or a controller that did not return.
 The direct PlatformIO commands remain available for development:
 
 ```sh

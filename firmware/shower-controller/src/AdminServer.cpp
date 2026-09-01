@@ -1,6 +1,8 @@
 #include "AdminServer.h"
 
+#include <Update.h>
 #include <WiFi.h>
+#include <esp_system.h>
 #include <esp_task_wdt.h>
 #include <SD.h>
 #include <mbedtls/base64.h>
@@ -219,6 +221,26 @@ bool parseVolume(const String& value, long& percent) {
   return percent >= 0 && percent <= 100;
 }
 
+bool isLowerHex(const String& value, size_t length) {
+  if (value.length() != length) return false;
+  for (size_t i = 0; i < length; ++i) {
+    if (!isDigit(value[i]) && (value[i] < 'a' || value[i] > 'f')) return false;
+  }
+  return true;
+}
+
+bool parseSize(const String& value, size_t& parsed) {
+  if (value.isEmpty() || value.length() > 10) return false;
+  for (size_t i = 0; i < value.length(); ++i) {
+    if (!isDigit(value[i])) return false;
+  }
+  char* end = nullptr;
+  const unsigned long result = strtoul(value.c_str(), &end, 10);
+  if (end == nullptr || *end != 0 || result == 0) return false;
+  parsed = static_cast<size_t>(result);
+  return true;
+}
+
 bool parseRelayConfig(const String& value, SettingsStore::RelayConfig& config) {
   int fields[4] = {0};
   int start = 0;
@@ -258,6 +280,7 @@ AdminServer::AdminServer(MemberRegistry& registry, const PulseStorage& pulseStor
 
 bool AdminServer::begin() {
   if (started_) return true;
+  while (otaBootId_ == 0) otaBootId_ = esp_random();
   // CampNet owns the radio and brings up the soft-AP; this only serves HTTP.
   if (!net_.ready()) return false;
   // begin() is retried from the main loop if the AP fails at boot, so the
@@ -275,6 +298,10 @@ bool AdminServer::begin() {
 
 void AdminServer::handle() {
   if (started_) server_.handleClient();
+  if ((otaState_ == OtaState::PREPARING || otaState_ == OtaState::ARMED) &&
+      static_cast<int32_t>(millis() - otaExpiresMs_) >= 0) {
+    failOta("Update preparation expired");
+  }
   drainRemoteCommands();
   if (millis() - lastTelemetryMs_ >= TELEMETRY_REBUILD_MS) {
     lastTelemetryMs_ = millis();
@@ -401,6 +428,39 @@ bool AdminServer::takeEndSessionRequest() {
   return requested;
 }
 
+bool AdminServer::takeOtaPrepareRequest() {
+  const bool requested = otaPrepareRequested_;
+  otaPrepareRequested_ = false;
+  return requested;
+}
+
+void AdminServer::confirmOtaPrepared(bool relaysOff) {
+  if (otaState_ != OtaState::PREPARING) return;
+  if (!relaysOff) {
+    failOta("Could not confirm all relays off");
+    return;
+  }
+  otaState_ = OtaState::ARMED;
+  otaMessage_ = "Ready for firmware upload";
+}
+
+bool AdminServer::takeOtaRecoveryRequest() {
+  const bool requested = otaRecoveryRequested_;
+  otaRecoveryRequested_ = false;
+  return requested;
+}
+
+bool AdminServer::takeOtaRebootRequest() {
+  const bool requested = otaRebootRequested_;
+  otaRebootRequested_ = false;
+  return requested;
+}
+
+bool AdminServer::otaMaintenanceActive() const {
+  return otaState_ == OtaState::PREPARING || otaState_ == OtaState::ARMED ||
+         otaState_ == OtaState::UPLOADING || otaState_ == OtaState::SUCCESS;
+}
+
 bool AdminServer::authorize() {
   // The Wi-Fi password is the gate; the page itself is open unless enabled.
   if (!Config::ADMIN_PAGE_PASSWORD) return true;
@@ -477,6 +537,16 @@ void AdminServer::configureRoutes() {
                audioUploadAuthorized_ = false;
              },
              [this]() { handleAudioUpload(); });
+  server_.on("/api/ota/status", HTTP_GET, [this]() { sendOtaStatus(); });
+  server_.on("/api/ota/prepare", HTTP_POST, [this]() { handleOtaPrepare(); });
+  server_.on("/api/ota/upload", HTTP_POST,
+             [this]() {
+               const bool ok = otaState_ == OtaState::SUCCESS && !otaUploadFailed_;
+               sendJsonMessage(ok ? 200 : 500, ok,
+                               ok ? "Firmware verified; rebooting" : otaMessage_);
+               if (ok) otaRebootRequested_ = true;
+             },
+             [this]() { handleOtaUpload(); });
   server_.onNotFound([this]() { if (authorize()) sendJsonMessage(404, false, "Not found"); });
 }
 
@@ -734,6 +804,10 @@ String AdminServer::stationsJson() const {
 // ---- Station actions: one implementation per action, local or remote ----
 
 int AdminServer::runAction(uint8_t action, const String& text, float value, String& message) {
+  if (otaMaintenanceActive() || otaRecoveryRequested_) {
+    message = "Controller is in firmware update mode";
+    return 409;
+  }
   if (!Config::HAS_MUSIC && needsMusic(action)) {
     message = "Not available on a fill station";
     return 501;
@@ -1072,6 +1146,9 @@ String AdminServer::statusJson() const {
   body += ",\"roleName\":\"" + String(CampNet::roleName(Config::STATION_ROLE_VALUE)) + "\"";
   body += ",\"ssid\":\"" + String(Config::WIFI_AP_NAME) + "\"";
   body += ",\"pagePassword\":" + String(Config::ADMIN_PAGE_PASSWORD ? "true" : "false");
+  body += ",\"firmware\":{\"commit\":\"" + String(Config::FIRMWARE_COMMIT) + "\"";
+  body += ",\"dirty\":" + String(Config::FIRMWARE_DIRTY ? "true" : "false");
+  body += ",\"otaCapable\":true}";
   body += ",\"features\":{\"music\":" + String(Config::HAS_MUSIC ? "true" : "false");
   body += ",\"leds\":" + String(Config::HAS_LED_STRIP ? "true" : "false");
   body += ",\"doorSign\":" + String(Config::HAS_DOOR_SIGN ? "true" : "false") + "}";
@@ -1211,6 +1288,174 @@ void AdminServer::changePassword() {
   sendJsonMessage(200, true, "Password changed");
 }
 
+const char* AdminServer::otaStateName() const {
+  switch (otaState_) {
+    case OtaState::IDLE: return "idle";
+    case OtaState::PREPARING: return "preparing";
+    case OtaState::ARMED: return "armed";
+    case OtaState::UPLOADING: return "uploading";
+    case OtaState::SUCCESS: return "success";
+    case OtaState::ERROR: return "error";
+  }
+  return "error";
+}
+
+void AdminServer::sendOtaStatus() {
+  String body;
+  body.reserve(420);
+  body += "{\"ok\":true,\"stationId\":" + String(Config::STATION_ID_VALUE);
+  body += ",\"role\":" + String(Config::STATION_ROLE_VALUE);
+  body += ",\"state\":\"" + String(otaStateName()) + "\"";
+  body += ",\"message\":\"" + jsonEscape(otaMessage_) + "\"";
+  body += ",\"maxImageBytes\":" + String(ESP.getFreeSketchSpace());
+  body += ",\"uptimeMs\":" + String(millis());
+  body += ",\"bootId\":" + String(otaBootId_);
+  body += ",\"bootPending\":" + String(otaBootPending_ ? "true" : "false");
+  body += ",\"firmware\":{\"commit\":\"" + String(Config::FIRMWARE_COMMIT) + "\"";
+  body += ",\"dirty\":" + String(Config::FIRMWARE_DIRTY ? "true" : "false");
+  body += ",\"stationId\":" + String(Config::STATION_ID_VALUE);
+  body += ",\"role\":" + String(Config::STATION_ROLE_VALUE);
+  body += ",\"otaCapable\":true}";
+  body += ",\"blockers\":{\"session\":" + String(activeName_[0] != '\0' ? "true" : "false");
+  body += ",\"enrollment\":" + String(enrollmentPending_ ? "true" : "false");
+  body += ",\"calibration\":" + String(calibrationActive_ ? "true" : "false");
+  body += ",\"musicCalibration\":" + String(musicCalibrationActive_ ? "true" : "false");
+  body += ",\"relayTest\":" + String(relayTestActive_ ? "true" : "false");
+  body += ",\"relayUnavailable\":" + String(!relayReady_ ? "true" : "false") + "}}";
+  server_.send(200, "application/json", body);
+}
+
+void AdminServer::handleOtaPrepare() {
+  if (otaMaintenanceActive() || otaState_ == OtaState::SUCCESS) {
+    return sendJsonMessage(409, false, "Another firmware update is already active");
+  }
+  if (activeName_[0] != '\0' || enrollmentPending_ || calibrationActive_ ||
+      musicCalibrationActive_ || relayTestActive_ || pumpOn_) {
+    return sendJsonMessage(409, false, "Firmware update requires a completely idle station");
+  }
+  if (!relayReady_) return sendJsonMessage(503, false, "Relay module must be available to confirm all outputs off");
+  if (server_.arg("stationId") != String(Config::STATION_ID_VALUE) ||
+      server_.arg("role") != String(Config::STATION_ROLE_VALUE)) {
+    return sendJsonMessage(409, false, "Firmware profile does not match this station");
+  }
+  size_t imageBytes = 0;
+  const String sha256 = server_.arg("sha256");
+  const String commit = server_.arg("commit");
+  const String dirty = server_.arg("dirty");
+  if (!parseSize(server_.arg("size"), imageBytes) || !isLowerHex(sha256, 64) ||
+      !isLowerHex(commit, 10) || (dirty != "0" && dirty != "1")) {
+    return sendJsonMessage(400, false, "Invalid firmware metadata");
+  }
+  if (imageBytes > ESP.getFreeSketchSpace()) {
+    return sendJsonMessage(413, false, "Firmware does not fit the inactive OTA slot");
+  }
+
+  otaExpectedBytes_ = imageBytes;
+  otaReceivedBytes_ = 0;
+  strlcpy(otaExpectedSha256_, sha256.c_str(), sizeof(otaExpectedSha256_));
+  strlcpy(otaCommit_, commit.c_str(), sizeof(otaCommit_));
+  otaDirty_ = dirty == "1";
+  snprintf(otaToken_, sizeof(otaToken_), "%08lx%08lx%08lx%08lx",
+           static_cast<unsigned long>(esp_random()),
+           static_cast<unsigned long>(esp_random()),
+           static_cast<unsigned long>(esp_random()),
+           static_cast<unsigned long>(esp_random()));
+  otaExpiresMs_ = millis() + Config::OTA_ARM_TIMEOUT_MS;
+  otaUploadFailed_ = false;
+  otaState_ = OtaState::PREPARING;
+  otaMessage_ = "Commanding all relays off";
+  otaPrepareRequested_ = true;
+  String body = String("{\"ok\":true,\"state\":\"preparing\",\"token\":\"") +
+                otaToken_ + "\",\"expiresMs\":" + Config::OTA_ARM_TIMEOUT_MS + "}";
+  server_.send(202, "application/json", body);
+}
+
+void AdminServer::failOta(const String& message) {
+  if (Update.isRunning()) Update.abort();
+  if (otaShaStarted_) {
+    mbedtls_sha256_free(&otaSha_);
+    otaShaStarted_ = false;
+  }
+  otaUploadFailed_ = true;
+  otaState_ = OtaState::ERROR;
+  otaMessage_ = message;
+  otaRecoveryRequested_ = true;
+  Serial.printf("[OTA] failed: %s\n", message.c_str());
+}
+
+void AdminServer::handleOtaUpload() {
+  HTTPUpload& upload = server_.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    otaUploadAccepted_ = otaState_ == OtaState::ARMED &&
+                         server_.arg("token") == otaToken_ &&
+                         static_cast<int32_t>(millis() - otaExpiresMs_) < 0;
+    otaUploadFailed_ = !otaUploadAccepted_;
+    if (!otaUploadAccepted_) {
+      otaMessage_ = "Firmware upload was not prepared or its token expired";
+      return;
+    }
+    otaReceivedBytes_ = 0;
+    if (!Update.begin(otaExpectedBytes_, U_FLASH)) {
+      failOta(String("Could not open OTA partition: ") + Update.errorString());
+      return;
+    }
+    mbedtls_sha256_init(&otaSha_);
+    if (mbedtls_sha256_starts_ret(&otaSha_, 0) != 0) {
+      failOta("Could not initialize firmware checksum");
+      return;
+    }
+    otaShaStarted_ = true;
+    otaState_ = OtaState::UPLOADING;
+    otaMessage_ = "Receiving firmware";
+    Serial.printf("[OTA] upload started bytes=%u commit=%s dirty=%s\n",
+                  static_cast<unsigned>(otaExpectedBytes_), otaCommit_, otaDirty_ ? "yes" : "no");
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (!otaUploadAccepted_ || otaUploadFailed_) return;
+    esp_task_wdt_reset();
+    if (upload.currentSize > otaExpectedBytes_ - otaReceivedBytes_) {
+      failOta("Firmware upload exceeded declared size");
+      return;
+    }
+    if (mbedtls_sha256_update_ret(&otaSha_, upload.buf, upload.currentSize) != 0 ||
+        Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+      failOta(String("Firmware flash write failed: ") + Update.errorString());
+      return;
+    }
+    otaReceivedBytes_ += upload.currentSize;
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (!otaUploadAccepted_ || otaUploadFailed_) return;
+    if (otaReceivedBytes_ != otaExpectedBytes_) {
+      failOta("Firmware upload ended before the declared size");
+      return;
+    }
+    uint8_t digest[32] = {0};
+    if (mbedtls_sha256_finish_ret(&otaSha_, digest) != 0) {
+      failOta("Could not finalize firmware checksum");
+      return;
+    }
+    mbedtls_sha256_free(&otaSha_);
+    otaShaStarted_ = false;
+    char actualSha256[65] = {0};
+    for (size_t i = 0; i < sizeof(digest); ++i) {
+      snprintf(actualSha256 + i * 2, sizeof(actualSha256) - i * 2, "%02x", digest[i]);
+    }
+    if (strcmp(actualSha256, otaExpectedSha256_) != 0) {
+      failOta("Firmware SHA-256 did not match the prepared image");
+      return;
+    }
+    if (!Update.end(false)) {
+      failOta(String("Firmware image validation failed: ") + Update.errorString());
+      return;
+    }
+    otaState_ = OtaState::SUCCESS;
+    otaMessage_ = "Firmware verified; reboot pending";
+    Serial.printf("[OTA] verified bytes=%u sha256=%s\n",
+                  static_cast<unsigned>(otaReceivedBytes_), actualSha256);
+  } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    if (otaUploadAccepted_) failOta("Firmware upload was aborted");
+  }
+}
+
 void AdminServer::handleAudioUpload() {
   HTTPUpload& upload = server_.upload();
   if (upload.status == UPLOAD_FILE_START) {
@@ -1221,7 +1466,8 @@ void AdminServer::handleAudioUpload() {
     // The multipart body is parsed synchronously inside handleClient(), so the
     // main loop (session limits, relay-test timeout, WDT feed) is frozen for
     // the whole transfer. Only accept uploads while the station is idle.
-    if (activeName_[0] != '\0' || calibrationActive_ || relayTestActive_) {
+    if (activeName_[0] != '\0' || calibrationActive_ || relayTestActive_ ||
+        otaMaintenanceActive()) {
       audioUploadFailed_ = true;
       return;
     }
