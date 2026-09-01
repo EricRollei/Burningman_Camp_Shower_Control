@@ -1,6 +1,7 @@
 #include <M5Unified.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <esp_ota_ops.h>
 #include <esp_task_wdt.h>
 
 #include "AdminServer.h"
@@ -18,6 +19,8 @@
 #include "SpeakerAudio.h"
 #include "StationDisplay.h"
 #include "UsageLedger.h"
+
+extern "C" bool verifyRollbackLater() { return true; }
 
 namespace {
 enum class ScreenState { IDLE, ACTIVE, MUSIC_CHANNEL, MESSAGE, CALIBRATION };
@@ -92,6 +95,9 @@ bool musicStaticStarted = false;
 bool musicCalibrationActive = false;
 bool summaryReady = false;
 bool summaryLogged = false;
+bool otaPendingVerification = false;
+uint32_t otaVerificationLoopStartMs = 0;
+uint32_t otaLastRollbackAttemptMs = 0;
 uint8_t musicCalibrationNextPosition = 0;
 int8_t musicChannel = -1;
 String musicCalibrationMessage = "Ready to calibrate";
@@ -115,8 +121,13 @@ bool setConfiguredRelay(uint8_t channel, bool on) {
   return true;
 }
 
-void shutdownAllRelays() {
-  if (relayReady && !relays.allOff()) relayReady = false;
+bool shutdownAllRelays() {
+  if (!relayReady) return false;
+  if (!relays.allOff()) {
+    relayReady = false;
+    return false;
+  }
+  return true;
 }
 
 bool applyAccessoryPolicy() {
@@ -137,7 +148,8 @@ void stopSessionOutputs() {
 
 uint8_t doorDisplayState() {
   if (sessionActive()) return CampNet::DOOR_IN_USE;
-  if (calibrationActive || relayTestActive || !pulseStorage.healthy() || !sessions.healthy() ||
+  if (admin.otaMaintenanceActive() || calibrationActive || relayTestActive ||
+      !pulseStorage.healthy() || !sessions.healthy() ||
       !settings.healthy() || !relayReady || !rfidReady) return CampNet::DOOR_UNAVAILABLE;
   return CampNet::DOOR_OPEN;
 }
@@ -317,6 +329,63 @@ void rebootController(const char* source) {
   admin.handle();  // Give a pending HTTP response a chance to flush.
   delay(250);
   ESP.restart();
+}
+
+void serviceOtaBootVerification() {
+  if (!otaPendingVerification) return;
+  const uint32_t now = millis();
+  if (otaVerificationLoopStartMs == 0) otaVerificationLoopStartMs = now;
+  if (now - otaVerificationLoopStartMs >= Config::OTA_HEALTHY_AFTER_MS &&
+      campNet.ready() && admin.started()) {
+    const esp_err_t result = esp_ota_mark_app_valid_cancel_rollback();
+    if (result == ESP_OK) {
+      otaPendingVerification = false;
+      Serial.printf("[OTA] boot verified commit=%s dirty=%s\n",
+                    Config::FIRMWARE_COMMIT, Config::FIRMWARE_DIRTY ? "yes" : "no");
+    } else {
+      Serial.printf("[OTA] could not mark image valid: %s\n", esp_err_to_name(result));
+    }
+    return;
+  }
+  if (now < Config::OTA_ROLLBACK_AFTER_MS) return;
+  if (otaLastRollbackAttemptMs != 0 && now - otaLastRollbackAttemptMs < 5000) return;
+  otaLastRollbackAttemptMs = now;
+  Serial.println("[OTA] boot health deadline missed; rolling back");
+  if (Config::HAS_MUSIC) speakerAudio.stop();
+  shutdownAllRelays();
+  const esp_err_t result = esp_ota_mark_app_invalid_rollback_and_reboot();
+  Serial.printf("[OTA] rollback failed: %s\n", esp_err_to_name(result));
+  setMessage("UPDATE FAILED", "USB recovery required", 30000);
+}
+
+bool serviceOtaLifecycle() {
+  if (admin.takeOtaPrepareRequest()) {
+    if (Config::HAS_MUSIC) speakerAudio.stop();
+    musicStartPending = false;
+    musicKnobMoving = false;
+    musicStaticStarted = false;
+    const bool relaysOff = shutdownAllRelays();
+    if (Config::HAS_LED_STRIP) lightShow.handle(speakerAudio, false);
+    setMessage(relaysOff ? "SOFTWARE UPDATE" : "UPDATE FAILED",
+               relaysOff ? "Keep power on" : "Could not turn relays off",
+               Config::OTA_ARM_TIMEOUT_MS + 10000UL);
+    admin.confirmOtaPrepared(relaysOff);
+  }
+
+  if (admin.takeOtaRecoveryRequest()) {
+    shutdownAllRelays();
+    if (relayReady && !applyAccessoryPolicy()) relayReady = false;
+    setMessage("UPDATE FAILED", "Old firmware is still active", 5000);
+  }
+  if (admin.takeOtaRebootRequest()) rebootController("OTA update");
+  if (!admin.otaMaintenanceActive()) return false;
+
+  if (Config::HAS_MUSIC) speakerAudio.stop();
+  if (Config::HAS_LED_STRIP) lightShow.handle(speakerAudio, false);
+  serviceCampNet();
+  if (screenDirty) drawScreen();
+  delay(5);
+  return true;
 }
 
 void startSession(const String& uid) {
@@ -746,6 +815,7 @@ void handleMusicKnob() {
 
 void reportAdminState() {
   admin.reportHardware(hubReady, relayReady, rfidReady);
+  admin.reportOtaBootPending(otaPendingVerification);
   admin.reportRelays(relays.state(), relayTestActive, relayTestChannel);
   admin.reportSession(activeName, sessionActive() ? gallonsFor(sessionPulses) : 0.0F,
                       sessionActive() ? activeAllowance : 0.0F,
@@ -857,6 +927,16 @@ void setup() {
   delay(200);
   auto config = M5.config();
   M5.begin(config);
+  // Start supervision before storage, I2C, radio, or Bluetooth setup so a bad
+  // OTA image that wedges during setup is reset and the bootloader can revert.
+  esp_task_wdt_init(Config::WDT_TIMEOUT_S, true);
+  esp_task_wdt_add(nullptr);
+  const esp_partition_t* runningPartition = esp_ota_get_running_partition();
+  esp_ota_img_states_t otaState;
+  otaPendingVerification = runningPartition != nullptr &&
+                           esp_ota_get_state_partition(runningPartition, &otaState) == ESP_OK &&
+                           otaState == ESP_OTA_IMG_PENDING_VERIFY;
+  if (otaPendingVerification) Serial.println("[OTA] new image pending boot health verification");
   // Tough's AXP192 gates 5 V to the external HY2.0 ports. Keep Port A powered
   // explicitly before probing the PaHUB rather than relying on library defaults.
   M5.Power.setExtOutput(true);
@@ -868,6 +948,7 @@ void setup() {
   delay(10);
   Wire.begin(Config::I2C_SDA, Config::I2C_SCL, Config::I2C_FREQUENCY);
   discoverI2cDevices();
+  esp_task_wdt_reset();
 
   M5.Display.setRotation(1);
   stationDisplay.begin();
@@ -890,10 +971,15 @@ void setup() {
   flow.begin(Config::FLOW_PIN);
   lastSensorTotal = flow.totalPulses();
   const bool sdReady = pulseStorage.begin();
+  esp_task_wdt_reset();
   const bool membersReady = sdReady && members.begin();
+  esp_task_wdt_reset();
   const bool settingsReady = sdReady && settings.begin();
+  esp_task_wdt_reset();
   const bool sessionsReady = sdReady && sessions.begin();
+  esp_task_wdt_reset();
   const bool ledgerReady = sdReady && ledger.begin();
+  esp_task_wdt_reset();
 
   // Relay discovery used safe defaults above. Now that the saved mapping is
   // available, begin from all-off again and restore only configured accessory
@@ -902,10 +988,12 @@ void setup() {
   if (relayReady && !applyAccessoryPolicy()) relayReady = false;
   const bool netReady = campNet.begin();
   const bool adminReady = netReady && admin.begin();
+  esp_task_wdt_reset();
   bool audioReady = false;
   if (Config::HAS_MUSIC) {
     speakerAudio.setSpeakerVolumePercent(settings.speakerVolumePercent());
     audioReady = speakerAudio.begin();
+    esp_task_wdt_reset();
   }
 
   Serial.printf("[BOOT] station=%u role=%s board=%u ext5v=%s sd=%s members=%s settings=%s sessions=%s ledger=%s hub=%s relay=%s rfid=%s net=%s admin=%s\n",
@@ -938,11 +1026,7 @@ void setup() {
   Serial.println("[HELP] commands: off end status tone play play1..play9 stop");
   screenDirty = true;
 
-  // If the main loop ever wedges (I2C bus hang, SD stall, deadlock), reboot
-  // instead of sitting dead until someone power-cycles the station. Only this
-  // task is subscribed; radio and system tasks keep their own supervision.
-  esp_task_wdt_init(Config::WDT_TIMEOUT_S, true);
-  esp_task_wdt_add(nullptr);
+  // The loop continues feeding the watchdog initialized before hardware setup.
 }
 
 void loop() {
@@ -952,6 +1036,8 @@ void loop() {
   // accept an idle-only relay action.
   reportAdminState();
   admin.handle();
+  serviceOtaBootVerification();
+  if (serviceOtaLifecycle()) return;
   if (Config::HAS_MUSIC) speakerAudio.handle();
   if (Config::HAS_LED_STRIP) lightShow.handle(speakerAudio, sessionActive());
   serviceCampNet();
